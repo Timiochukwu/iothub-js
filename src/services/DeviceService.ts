@@ -76,7 +76,7 @@ export class DeviceService {
       if (!user) {
         throw new CustomError('User not found', 404);
       }
-      return this.getUserDevices(user._id.toString(), page, limit);
+      return this.getUserDevices((user._id as any).toString(), page, limit);
     } catch (error) {
       if (error instanceof CustomError) {
         throw error;
@@ -135,7 +135,7 @@ export class DeviceService {
       if (!user) {
         throw new CustomError('User not found', 404);
       }
-      return this.getActiveDevice(user._id.toString());
+      return this.getActiveDevice((user._id as any).toString());
     } catch (error) {
       if (error instanceof CustomError) {
         throw error;

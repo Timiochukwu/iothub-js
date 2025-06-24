@@ -8,17 +8,11 @@ const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 export class JwtUtils {
   static generateToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
-    const options: SignOptions = {
-      expiresIn: JWT_EXPIRES_IN as string,
-    };
-    return jwt.sign(payload, JWT_SECRET, options);
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as any });
   }
 
   static generateRefreshToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
-    const options: SignOptions = {
-      expiresIn: JWT_REFRESH_EXPIRES_IN as string,
-    };
-    return jwt.sign(payload, JWT_SECRET, options);
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN as any });
   }
 
   static verifyToken(token: string): JwtPayload {

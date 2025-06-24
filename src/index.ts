@@ -1,10 +1,9 @@
-import 'reflect-metadata';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import { initializeDatabases } from './config/database';
+import { connectMongoDB } from './config/database';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import userRoutes from './routes/userRoutes';
 import deviceRoutes from './routes/deviceRoutes';
@@ -61,8 +60,8 @@ app.use(errorHandler);
 // Start server
 const startServer = async (): Promise<void> => {
   try {
-    // Initialize databases
-    await initializeDatabases();
+    // Initialize MongoDB
+    await connectMongoDB();
     
     // Start Express server
     app.listen(PORT, () => {

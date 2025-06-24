@@ -28,16 +28,17 @@ export class UserService {
         isActive: true
       });
       // Generate tokens
+      const userDoc = user as IUser & { _id: any };
       const token = JwtUtils.generateToken({
-        userId: user._id.toString(),
+        userId: userDoc._id.toString(),
         email: user.email
       });
       const refreshToken = JwtUtils.generateRefreshToken({
-        userId: user._id.toString(),
+        userId: userDoc._id.toString(),
         email: user.email
       });
       const userWithoutPassword = user.toObject();
-      delete userWithoutPassword.password;
+      delete (userWithoutPassword as any).password;
       return {
         success: true,
         message: 'User registered successfully',
@@ -74,16 +75,17 @@ export class UserService {
         throw new CustomError('Invalid email or password', 401);
       }
       // Generate tokens
+      const userDoc = user as IUser & { _id: any };
       const token = JwtUtils.generateToken({
-        userId: user._id.toString(),
+        userId: userDoc._id.toString(),
         email: user.email
       });
       const refreshToken = JwtUtils.generateRefreshToken({
-        userId: user._id.toString(),
+        userId: userDoc._id.toString(),
         email: user.email
       });
       const userWithoutPassword = user.toObject();
-      delete userWithoutPassword.password;
+      delete (userWithoutPassword as any).password;
       return {
         success: true,
         message: 'Login successful',
@@ -107,16 +109,17 @@ export class UserService {
       if (!user || !user.isActive) {
         throw new CustomError('Invalid refresh token', 401);
       }
+      const userDoc = user as IUser & { _id: any };
       const token = JwtUtils.generateToken({
-        userId: user._id.toString(),
+        userId: userDoc._id.toString(),
         email: user.email
       });
       const refreshToken = JwtUtils.generateRefreshToken({
-        userId: user._id.toString(),
+        userId: userDoc._id.toString(),
         email: user.email
       });
       const userWithoutPassword = user.toObject();
-      delete userWithoutPassword.password;
+      delete (userWithoutPassword as any).password;
       return {
         success: true,
         message: 'Token refreshed successfully',
@@ -165,7 +168,7 @@ export class UserService {
       if (userData.phone !== undefined) user.phone = userData.phone;
       await user.save();
       const userWithoutPassword = user.toObject();
-      delete userWithoutPassword.password;
+      delete (userWithoutPassword as any).password;
       return {
         success: true,
         message: 'User updated successfully',
