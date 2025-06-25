@@ -1,7 +1,8 @@
-import { Telemetry, ITelemetry } from '../models/Telemetry';
-import { Device } from '../models/Device';
-import { 
-  TelemetryData, 
+import { Telemetry, ITelemetry } from "../models/Telemetry";
+import { Document, Types } from "mongoose"; // Add Types here
+import { Device } from "../models/Device";
+import {
+  TelemetryData,
   TelemetryPayload,
   TirePressureDTO,
   PositionDTO,
@@ -16,9 +17,9 @@ import {
   PowerStatsDTO,
   TotalMileageDTO,
   VehicleHealthDTO,
-  ApiResponse
-} from '../types';
-import { CustomError } from '../middleware/errorHandler';
+  ApiResponse,
+} from "../types";
+import { CustomError } from "../middleware/errorHandler";
 
 export class TelemetryService {
   async ingestTelemetry(payload: TelemetryPayload): Promise<ApiResponse> {
@@ -30,21 +31,21 @@ export class TelemetryService {
         imei,
         timestamp: reported.ts || Date.now(),
         tirePressure: this.toNumberSafe(reported.pr),
-        speed: this.toNumberSafe(reported['24'] || reported.sp),
+        speed: this.toNumberSafe(reported["24"] || reported.sp),
         latlng: reported.latlng,
         altitude: this.toNumberSafe(reported.alt),
         angle: this.toNumberSafe(reported.ang),
         satellites: this.toIntegerSafe(reported.sat),
         event: this.toIntegerSafe(reported.evt),
-        battery: this.toNumberSafe(reported['67']),
-        fuelLevel: this.toNumberSafe(reported['48']),
-        engineRpm: this.toNumberSafe(reported['36']),
-        engineOilTemp: this.toNumberSafe(reported['58']),
-        crashDetection: this.toIntegerSafe(reported['247']),
-        engineLoad: this.toNumberSafe(reported['31']),
-        dtc: this.toIntegerSafe(reported['30']),
-        externalVoltage: this.toNumberSafe(reported['66']),
-        totalMileage: this.toNumberSafe(reported['16'])
+        battery: this.toNumberSafe(reported["67"]),
+        fuelLevel: this.toNumberSafe(reported["48"]),
+        engineRpm: this.toNumberSafe(reported["36"]),
+        engineOilTemp: this.toNumberSafe(reported["58"]),
+        crashDetection: this.toIntegerSafe(reported["247"]),
+        engineLoad: this.toNumberSafe(reported["31"]),
+        dtc: this.toIntegerSafe(reported["30"]),
+        externalVoltage: this.toNumberSafe(reported["66"]),
+        totalMileage: this.toNumberSafe(reported["16"]),
       };
 
       const telemetry = new Telemetry(telemetryData);
@@ -52,11 +53,11 @@ export class TelemetryService {
 
       return {
         success: true,
-        message: 'Telemetry data ingested successfully',
-        data: { id: telemetry._id.toString() }
+        message: "Telemetry data ingested successfully",
+        data: { id: telemetry._id.toString() },
       };
     } catch (error) {
-      throw new CustomError('Failed to ingest telemetry data', 500);
+      throw new CustomError("Failed to ingest telemetry data", 500);
     }
   }
 
@@ -65,7 +66,7 @@ export class TelemetryService {
       const telemetries = await Telemetry.find().sort({ timestamp: -1 });
       return telemetries.map(this.mapToTelemetryData);
     } catch (error) {
-      throw new CustomError('Failed to fetch telemetry data', 500);
+      throw new CustomError("Failed to fetch telemetry data", 500);
     }
   }
 
@@ -74,23 +75,25 @@ export class TelemetryService {
       const latest = await Telemetry.findOne().sort({ timestamp: -1 });
       return latest ? this.mapToTelemetryData(latest) : null;
     } catch (error) {
-      throw new CustomError('Failed to fetch latest telemetry', 500);
+      throw new CustomError("Failed to fetch latest telemetry", 500);
     }
   }
 
   async getTelemetryForUser(email: string): Promise<TelemetryData[]> {
     try {
       const devices = await Device.find({ user: email });
-      const imeis = devices.map(device => device.imei);
+      const imeis = devices.map((device) => device.imei);
 
       if (imeis.length === 0) {
         return [];
       }
 
-      const telemetries = await Telemetry.find({ imei: { $in: imeis } }).sort({ timestamp: -1 });
+      const telemetries = await Telemetry.find({ imei: { $in: imeis } }).sort({
+        timestamp: -1,
+      });
       return telemetries.map(this.mapToTelemetryData);
     } catch (error) {
-      throw new CustomError('Failed to fetch user telemetry', 500);
+      throw new CustomError("Failed to fetch user telemetry", 500);
     }
   }
 
@@ -99,19 +102,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.tirePressure && latest.tirePressure > 0
-        ? `Tire is down ${45 - latest.tirePressure} psi`
-        : 'Tire pressure not detected';
+      const message =
+        latest.tirePressure && latest.tirePressure > 0
+          ? `Tire is down ${45 - latest.tirePressure} psi`
+          : "Tire pressure not detected";
 
       return {
         id: latest.id!,
         tirePressure: latest.tirePressure || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch tire pressure data', 500);
+      throw new CustomError("Failed to fetch tire pressure data", 500);
     }
   }
 
@@ -122,7 +126,7 @@ export class TelemetryService {
 
       const message = latest.latlng
         ? `Vehicle located at ${latest.latlng}`
-        : 'Position not available';
+        : "Position not available";
 
       return {
         id: latest.id!,
@@ -132,10 +136,10 @@ export class TelemetryService {
         satellites: latest.satellites || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch position data', 500);
+      throw new CustomError("Failed to fetch position data", 500);
     }
   }
 
@@ -144,18 +148,19 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.speed && latest.speed > 0
-        ? `Car currently moving at ${latest.speed} m/s`
-        : 'Car is not moving';
+      const message =
+        latest.speed && latest.speed > 0
+          ? `Car currently moving at ${latest.speed} m/s`
+          : "Car is not moving";
 
       return {
         id: latest.id!,
         speed: latest.speed || null,
         timestamp: latest.timestamp,
-        message
+        message,
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch speed data', 500);
+      throw new CustomError("Failed to fetch speed data", 500);
     }
   }
 
@@ -164,19 +169,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.battery && latest.battery > 0
-        ? `Battery level is ${latest.battery * 0.001}v`
-        : 'Battery value not detected';
+      const message =
+        latest.battery && latest.battery > 0
+          ? `Battery level is ${latest.battery * 0.001}v`
+          : "Battery value not detected";
 
       return {
         id: latest.id!,
         battery: latest.battery || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch battery data', 500);
+      throw new CustomError("Failed to fetch battery data", 500);
     }
   }
 
@@ -185,19 +191,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.fuelLevel && latest.fuelLevel > 0
-        ? `Fuel level is ${latest.fuelLevel}%`
-        : 'Fuel level not detected';
+      const message =
+        latest.fuelLevel && latest.fuelLevel > 0
+          ? `Fuel level is ${latest.fuelLevel}%`
+          : "Fuel level not detected";
 
       return {
         id: latest.id!,
         fuelLevel: latest.fuelLevel || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch fuel level data', 500);
+      throw new CustomError("Failed to fetch fuel level data", 500);
     }
   }
 
@@ -206,19 +213,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.engineRpm && latest.engineRpm > 0
-        ? `Engine RPM is ${latest.engineRpm} rpm`
-        : 'Engine rpm not detected';
+      const message =
+        latest.engineRpm && latest.engineRpm > 0
+          ? `Engine RPM is ${latest.engineRpm} rpm`
+          : "Engine rpm not detected";
 
       return {
         id: latest.id!,
         engineRpm: latest.engineRpm || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch engine RPM data', 500);
+      throw new CustomError("Failed to fetch engine RPM data", 500);
     }
   }
 
@@ -227,19 +235,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.engineOilTemp && latest.engineOilTemp > 0
-        ? `Engine oil temperature is ${latest.engineOilTemp}°C`
-        : 'Engine oil temperature not detected';
+      const message =
+        latest.engineOilTemp && latest.engineOilTemp > 0
+          ? `Engine oil temperature is ${latest.engineOilTemp}°C`
+          : "Engine oil temperature not detected";
 
       return {
         id: latest.id!,
         engineOilTemp: latest.engineOilTemp || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch engine oil temperature data', 500);
+      throw new CustomError("Failed to fetch engine oil temperature data", 500);
     }
   }
 
@@ -255,10 +264,10 @@ export class TelemetryService {
         crashDetection: latest.crashDetection || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch crash detection data', 500);
+      throw new CustomError("Failed to fetch crash detection data", 500);
     }
   }
 
@@ -267,19 +276,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.engineLoad && latest.engineLoad > 0
-        ? `Engine load is ${latest.engineLoad}%`
-        : 'Engine load not detected';
+      const message =
+        latest.engineLoad && latest.engineLoad > 0
+          ? `Engine load is ${latest.engineLoad}%`
+          : "Engine load not detected";
 
       return {
         id: latest.id!,
         engineLoad: latest.engineLoad || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch engine load data', 500);
+      throw new CustomError("Failed to fetch engine load data", 500);
     }
   }
 
@@ -288,19 +298,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.dtc && latest.dtc > 0
-        ? `DTC Code: ${latest.dtc} – diagnostic trouble detected`
-        : 'No DTC (Diagnostic Trouble Code) detected';
+      const message =
+        latest.dtc && latest.dtc > 0
+          ? `DTC Code: ${latest.dtc} – diagnostic trouble detected`
+          : "No DTC (Diagnostic Trouble Code) detected";
 
       return {
         id: latest.id!,
         dtc: latest.dtc || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch DTC data', 500);
+      throw new CustomError("Failed to fetch DTC data", 500);
     }
   }
 
@@ -309,10 +320,12 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const externalVoltage = latest.externalVoltage ? latest.externalVoltage * 0.001 : null;
+      const externalVoltage = latest.externalVoltage
+        ? latest.externalVoltage * 0.001
+        : null;
       const batteryVoltage = latest.battery ? latest.battery * 0.001 : null;
       const batteryHealth = this.evaluateBatteryHealth(latest.externalVoltage);
-      const message = `External Voltage: ${externalVoltage?.toFixed(2) || 'N/A'} V, Battery Voltage: ${batteryVoltage?.toFixed(2) || 'N/A'} V`;
+      const message = `External Voltage: ${externalVoltage?.toFixed(2) || "N/A"} V, Battery Voltage: ${batteryVoltage?.toFixed(2) || "N/A"} V`;
 
       return {
         id: latest.id!,
@@ -321,10 +334,10 @@ export class TelemetryService {
         timestamp: latest.timestamp,
         message,
         batteryHealth,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch power stats', 500);
+      throw new CustomError("Failed to fetch power stats", 500);
     }
   }
 
@@ -333,19 +346,20 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const message = latest.totalMileage && latest.totalMileage > 0
-        ? `Total mileage recorded: ${latest.totalMileage} km`
-        : 'Total mileage not available';
+      const message =
+        latest.totalMileage && latest.totalMileage > 0
+          ? `Total mileage recorded: ${latest.totalMileage} km`
+          : "Total mileage not available";
 
       return {
         id: latest.id!,
         totalMileage: latest.totalMileage || null,
         timestamp: latest.timestamp,
         message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp)
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch mileage data', 500);
+      throw new CustomError("Failed to fetch mileage data", 500);
     }
   }
 
@@ -354,8 +368,10 @@ export class TelemetryService {
       const latest = await this.getLatestTelemetry();
       if (!latest) return null;
 
-      const dtc = latest.dtc ? latest.dtc.toString() : 'None';
-      const batteryVoltage = latest.externalVoltage ? latest.externalVoltage * 0.001 : null;
+      const dtc = latest.dtc ? latest.dtc.toString() : "None";
+      const batteryVoltage = latest.externalVoltage
+        ? latest.externalVoltage * 0.001
+        : null;
       const batteryHealth = this.evaluateBatteryHealth(latest.externalVoltage);
       const engineHealth = this.evaluateEngineHealth(latest.engineRpm);
 
@@ -365,10 +381,10 @@ export class TelemetryService {
         batteryVoltage,
         batteryHealth,
         engineRPM: latest.engineRpm || null,
-        engineHealth
+        engineHealth,
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch vehicle health data', 500);
+      throw new CustomError("Failed to fetch vehicle health data", 500);
     }
   }
 
@@ -392,7 +408,7 @@ export class TelemetryService {
       engineLoad: telemetry.engineLoad,
       dtc: telemetry.dtc,
       externalVoltage: telemetry.externalVoltage,
-      totalMileage: telemetry.totalMileage
+      totalMileage: telemetry.totalMileage,
     };
   }
 
@@ -409,35 +425,42 @@ export class TelemetryService {
   }
 
   private formatTimestamp(timestamp: number): string {
-    return new Date(timestamp).toISOString().replace('T', ' ').substring(0, 19);
+    return new Date(timestamp).toISOString().replace("T", " ").substring(0, 19);
   }
 
   private getCrashDetectionMessage(crashDetection: number | undefined): string {
-    if (!crashDetection || crashDetection === 0) return 'No crash detected';
-    
+    if (!crashDetection || crashDetection === 0) return "No crash detected";
+
     switch (crashDetection) {
-      case 1: return 'Real crash detected (device is calibrated)';
-      case 2: return 'Limited crash trace (device not calibrated)';
-      case 3: return 'Limited crash trace (device is calibrated)';
-      case 4: return 'Full crash trace (device not calibrated)';
-      case 5: return 'Full crash trace (device is calibrated)';
-      case 6: return 'Real crash detected (device not calibrated)';
-      default: return 'Unknown crash detection value';
+      case 1:
+        return "Real crash detected (device is calibrated)";
+      case 2:
+        return "Limited crash trace (device not calibrated)";
+      case 3:
+        return "Limited crash trace (device is calibrated)";
+      case 4:
+        return "Full crash trace (device not calibrated)";
+      case 5:
+        return "Full crash trace (device is calibrated)";
+      case 6:
+        return "Real crash detected (device not calibrated)";
+      default:
+        return "Unknown crash detection value";
     }
   }
 
   private evaluateBatteryHealth(externalVoltage: number | undefined): string {
-    if (!externalVoltage) return 'Unknown';
+    if (!externalVoltage) return "Unknown";
     const voltage = externalVoltage * 0.001;
-    if (voltage >= 13.0) return 'Good';
-    if (voltage >= 12.4) return 'Fair';
-    return 'Bad';
+    if (voltage >= 13.0) return "Good";
+    if (voltage >= 12.4) return "Fair";
+    return "Bad";
   }
 
   private evaluateEngineHealth(engineRpm: number | undefined): string {
-    if (!engineRpm) return 'Unknown';
-    if (engineRpm < 600) return 'Idle';
-    if (engineRpm > 4000) return 'High Load';
-    return 'Normal';
+    if (!engineRpm) return "Unknown";
+    if (engineRpm < 600) return "Idle";
+    if (engineRpm > 4000) return "High Load";
+    return "Normal";
   }
 }
