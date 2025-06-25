@@ -1,43 +1,66 @@
-# IoT Hub Backend - Node.js TypeScript
+# IoT Hub Backend
 
-A modern, scalable IoT backend system built with Node.js, TypeScript, and Express. This project provides REST APIs for user authentication, device management, and telemetry data handling.
+A comprehensive IoT backend system for vehicle telemetry and fleet management, built with Node.js, TypeScript, and MongoDB.
 
 ## 🚀 Features
 
-- **Authentication & Authorization**: JWT-based authentication with refresh tokens
-- **User Management**: Registration, login, profile updates, password management
-- **Device Management**: Register, list, switch active devices, update device info
-- **Database Support**: PostgreSQL (users/devices) + MongoDB (telemetry)
-- **Type Safety**: Full TypeScript implementation with strict type checking
-- **Validation**: Request validation using Joi schemas
-- **Error Handling**: Comprehensive error handling with custom error classes
-- **Security**: Helmet, CORS, rate limiting, input validation
-- **Logging**: Morgan HTTP logging with environment-specific configurations
-- **Testing**: Jest testing framework with TypeScript support
+- **User Authentication & Authorization**: JWT-based authentication with email verification
+- **Device Management**: Register and manage IoT devices with detailed vehicle information
+- **Real-time Telemetry**: Live data streaming via WebSocket connections
+- **OBD2 Data Processing**: Comprehensive vehicle diagnostic data handling
+- **Alert System**: Real-time monitoring and alert detection
+- **Fleet Management**: Multi-device support with user associations
+- **RESTful API**: Complete CRUD operations for all entities
+- **Data Validation**: Robust input validation and error handling
+
+## 📡 Real-time Features
+
+- **WebSocket Support**: Bidirectional communication with devices and users
+- **Live Telemetry**: Real-time vehicle data streaming
+- **Automatic Alerts**: Battery, crash, engine, and health monitoring
+- **Device Tracking**: Connection status and heartbeat monitoring
+- **User Subscriptions**: Real-time updates for device owners
+- **Broadcast Capabilities**: Send messages to specific devices or all users
 
 ## 🏗️ Architecture
 
 ```
-src/
-├── config/          # Database and app configuration
-├── controllers/     # Request handlers
-├── middleware/      # Custom middleware (auth, validation, error handling)
-├── models/          # TypeORM entities
-├── routes/          # Express route definitions
-├── services/        # Business logic layer
-├── types/           # TypeScript type definitions
-├── utils/           # Utility functions (JWT, validation schemas)
-└── index.ts         # Application entry point
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   IoT Devices   │    │   Web Clients   │    │   Mobile Apps   │
+│   (OBD2 Data)   │    │   (Dashboard)   │    │   (Real-time)   │
+└─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘
+          │                      │                      │
+          └──────────────────────┼──────────────────────┘
+                                 │
+                    ┌─────────────┴─────────────┐
+                    │    WebSocket Server       │
+                    │   (Real-time Service)     │
+                    └─────────────┬─────────────┘
+                                 │
+                    ┌─────────────┴─────────────┐
+                    │    Express API Server     │
+                    │   (REST Endpoints)        │
+                    └─────────────┬─────────────┘
+                                 │
+                    ┌─────────────┴─────────────┐
+                    │      MongoDB Database     │
+                    │   (Telemetry Storage)     │
+                    └───────────────────────────┘
 ```
 
-## 📋 Prerequisites
+## 🛠️ Tech Stack
 
-- Node.js >= 18.0.0
-- npm >= 8.0.0
-- PostgreSQL >= 12
-- MongoDB >= 4.4
+- **Runtime**: Node.js 18+
+- **Language**: TypeScript
+- **Framework**: Express.js
+- **Database**: MongoDB with Mongoose
+- **Real-time**: Socket.IO
+- **Authentication**: JWT
+- **Validation**: Joi
+- **Email**: Nodemailer
+- **Testing**: Jest
 
-## 🛠️ Installation
+## 📦 Installation
 
 1. **Clone the repository**
    ```bash
@@ -50,101 +73,162 @@ src/
    npm install
    ```
 
-3. **Environment setup**
+3. **Set up environment variables**
    ```bash
    cp env.example .env
-   # Edit .env with your configuration
+   ```
+   
+   Configure your `.env` file:
+   ```env
+   # Server Configuration
+   PORT=6162
+   NODE_ENV=development
+   
+   # Database Configuration
+   MONGODB_URI=mongodb://localhost:27017/iothub
+   
+   # JWT Configuration
+   JWT_SECRET=your_jwt_secret_here
+   JWT_EXPIRES_IN=24h
+   
+   # Email Configuration
+   EMAIL_HOST=smtp.gmail.com
+   EMAIL_PORT=587
+   EMAIL_USER=your_email@gmail.com
+   EMAIL_PASS=your_app_password
+   
+   # WebSocket Configuration
+   FRONTEND_URL=http://localhost:3000
    ```
 
-4. **Database setup**
-   - Create PostgreSQL database named `iothub`
-   - Ensure MongoDB connection string is configured
-
-5. **Build the project**
+4. **Start the server**
    ```bash
-   npm run build
+   # Development
+   npm run dev
+   
+   # Production
+   npm start
    ```
 
-## 🚀 Running the Application
+## 🔌 Real-time Testing
 
-### Development
+### Quick Test
+Run the real-time telemetry test:
+
 ```bash
-npm run dev
+node test-realtime.js
 ```
 
-### Production
-```bash
-npm run build
-npm start
-```
+This will:
+- Connect a simulated IoT device
+- Connect a user client
+- Send real-time telemetry data
+- Display live updates and alerts
 
-### Testing
-```bash
-npm test
-npm run test:watch
-npm run test:coverage
-```
+### Manual Testing
+1. Start the server: `npm run dev`
+2. Open browser console or use a WebSocket client
+3. Connect to: `ws://localhost:6162`
+4. Follow the WebSocket events in `REALTIME_README.md`
 
-## 📡 API Endpoints
+## 📚 API Documentation
 
 ### Authentication
-- `POST /api/auth/register` - Register new user
+- `POST /api/auth/register` - User registration
 - `POST /api/auth/login` - User login
+- `POST /api/auth/verify-email` - Email verification
 
-### User Management
-- `GET /user/refreshToken` - Refresh JWT token
-- `GET /user/search` - Search user by email
-- `POST /user/create` - Create new user
-- `PUT /user/update` - Update user profile
-- `PUT /user/changePassword` - Change password
-- `DELETE /user/delete` - Delete user
+### Devices
+- `GET /api/devices` - Get user devices
+- `POST /api/devices` - Register new device
+- `GET /api/devices/:id` - Get device details
+- `PUT /api/devices/:id` - Update device
+- `DELETE /api/devices/:id` - Delete device
 
-### Device Management
-- `POST /api/devices/register` - Register new device
-- `GET /api/devices` - Get user's devices
-- `POST /api/devices/switch` - Switch active device
-- `GET /api/devices/active` - Get active device
-- `PUT /api/devices/:deviceId` - Update device
-- `DELETE /api/devices/:deviceId` - Delete device
+### Telemetry
+- `POST /api/telemetry/ingest` - Ingest telemetry data
+- `GET /api/telemetry/latest` - Get latest telemetry
+- `GET /api/telemetry/history` - Get telemetry history
+- `GET /api/telemetry/vehicle-health` - Get vehicle health
+- `GET /api/telemetry/position` - Get current position
 
-### Device Routes (by email)
-- `GET /api/devices/by-email` - Get devices by user email
-- `GET /api/devices/active-by-email` - Get active device by email
-- `GET /api/devices/imei/:imei` - Get device by IMEI
+### Real-time Management
+- `GET /api/realtime/connections` - Get active connections
+- `GET /api/realtime/devices` - Get connected devices
+- `GET /api/realtime/users` - Get connected users
+- `POST /api/realtime/broadcast` - Broadcast message
+- `POST /api/realtime/device/:imei` - Send to device
+- `POST /api/realtime/user/:email` - Send to user
 
-## 🔧 Configuration
+### Users
+- `GET /api/users/profile` - Get user profile
+- `PUT /api/users/profile` - Update profile
+- `POST /api/users/change-password` - Change password
 
-### Environment Variables
+## 🔌 WebSocket Events
 
-```env
-# Server Configuration
-NODE_ENV=development
-PORT=6162
-API_VERSION=v1
+### Device Events
+- `register_device` - Register device for real-time communication
+- `telemetry_data` - Send real-time telemetry data
+- `heartbeat` - Send periodic heartbeat
 
-# JWT Configuration
-JWT_SECRET=your-super-secret-jwt-key
-JWT_EXPIRES_IN=3h
-JWT_REFRESH_EXPIRES_IN=7d
+### User Events
+- `subscribe_user` - Subscribe to device updates
 
-# Database Configuration
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=iothub
-POSTGRES_USER=db_user
-POSTGRES_PASSWORD=db_password
+### Broadcast Events
+- `telemetry_update` - Real-time telemetry updates
+- `vehicle_alert` - Vehicle alert notifications
+- `crash_detected` - Crash detection alerts
 
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/iothub
-MONGODB_DATABASE=iothub
+## 📊 Data Models
 
-# Rate Limiting
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=100
+### Telemetry Data Structure
+```typescript
+{
+  imei: string;
+  timestamp: number;
+  data: {
+    engineRpm: number;
+    speed: number;
+    fuelLevel: number;
+    batteryVoltage: number;
+    crashDetection: number;
+    dtc: number;
+    position: {
+      latitude: number;
+      longitude: number;
+    };
+    // ... additional OBD2 parameters
+  };
+}
 ```
 
-## 🧪 Testing
+### Device Structure
+```typescript
+{
+  imei: string;
+  user: string;
+  vehicleInfo: {
+    make: string;
+    model: string;
+    year: number;
+    vin: string;
+  };
+  status: 'active' | 'inactive';
+  lastSeen: Date;
+}
+```
 
-The project includes comprehensive testing setup with Jest:
+## 🚨 Alert System
+
+The system automatically detects and broadcasts alerts:
+
+- **Low Battery**: Battery voltage < 12.0V
+- **Crash Detection**: Crash sensor triggered
+- **High Engine RPM**: Engine RPM > 4000
+- **Diagnostic Trouble Codes**: DTC > 0
+
+## 🧪 Testing
 
 ```bash
 # Run all tests
@@ -153,82 +237,54 @@ npm test
 # Run tests in watch mode
 npm run test:watch
 
-# Generate coverage report
+# Run tests with coverage
 npm run test:coverage
 ```
 
-## 📊 Database Schema
+## 📖 Documentation
 
-### Users Table (PostgreSQL)
-- `id` (UUID, Primary Key)
-- `email` (VARCHAR, Unique)
-- `password` (VARCHAR, Hashed)
-- `firstName` (VARCHAR, Optional)
-- `lastName` (VARCHAR, Optional)
-- `phone` (VARCHAR, Optional)
-- `isActive` (BOOLEAN, Default: true)
-- `createdAt` (TIMESTAMP)
-- `updatedAt` (TIMESTAMP)
-
-### Devices Table (PostgreSQL)
-- `id` (UUID, Primary Key)
-- `imei` (VARCHAR, Unique)
-- `userId` (UUID, Foreign Key)
-- `name` (VARCHAR, Optional)
-- `description` (TEXT, Optional)
-- `isActive` (BOOLEAN, Default: true)
-- `createdAt` (TIMESTAMP)
-- `updatedAt` (TIMESTAMP)
-
-## 🔒 Security Features
-
-- **JWT Authentication**: Secure token-based authentication
-- **Password Hashing**: bcrypt with salt rounds
-- **Input Validation**: Joi schema validation
-- **CORS Protection**: Configurable CORS policies
-- **Helmet Security**: Security headers
-- **Rate Limiting**: Request rate limiting
-- **SQL Injection Protection**: TypeORM parameterized queries
-
-## 📈 Scalability Features
-
-- **Connection Pooling**: Database connection management
-- **Error Handling**: Comprehensive error handling
-- **Logging**: Structured logging for monitoring
-- **Type Safety**: TypeScript for better code quality
-- **Modular Architecture**: Separation of concerns
-- **Middleware Pattern**: Reusable middleware components
+- [API Documentation](API.md) - Complete API reference
+- [Real-time System](REALTIME_README.md) - WebSocket and real-time features
+- [Telemetry System](TELEMETRY_README.md) - OBD2 data processing
+- [Postman Collection](IoT_Hub_API.postman_collection.json) - API testing
 
 ## 🚀 Deployment
 
-### Docker (Recommended)
+### Docker
 ```bash
-# Build Docker image
+# Build image
 docker build -t iothub-backend .
 
 # Run container
-docker run -p 6162:6162 --env-file .env iothub-backend
+docker run -p 6162:6162 iothub-backend
 ```
 
-### PM2
-```bash
-npm install -g pm2
-pm2 start dist/index.js --name iothub-backend
-```
+### Environment Variables
+Ensure all required environment variables are set in production:
+- `MONGODB_URI`
+- `JWT_SECRET`
+- `EMAIL_HOST`, `EMAIL_USER`, `EMAIL_PASS`
+- `FRONTEND_URL`
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+4. Add tests
+5. Submit a pull request
 
 ## 📄 License
 
-This project is licensed under the ISC License.
+This project is licensed under the MIT License.
 
 ## 🆘 Support
 
-For support and questions, please open an issue in the repository. 
+For support and questions:
+- Check the documentation
+- Review the test files
+- Open an issue on GitHub
+
+---
+
+**Note**: This is a conversion from a Java Spring Boot project to Node.js TypeScript, maintaining full compatibility with the original OBD2 telemetry system while adding modern real-time capabilities. 

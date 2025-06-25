@@ -1,5 +1,6 @@
 import { User, IUser } from '../models/User';
 import { JwtUtils } from '../utils/jwt';
+import { EmailService } from './EmailService';
 import {
   LoginRequest,
   RegisterRequest,
@@ -9,44 +10,37 @@ import {
 import { CustomError } from '../middleware/errorHandler';
 
 export class UserService {
+  private emailService: EmailService;
+
+  constructor() {
+    this.emailService = new EmailService();
+  }
+
   async register(userData: RegisterRequest): Promise<ApiResponse> {
     try {
       // Check if user already exists
       const existingUser = await User.findOne({ email: userData.email });
       if (existingUser) {
-        throw new CustomError('User with this email already exists', 409);
+        throw new CustomError('User already exists', 409);
       }
+
       // Hash password
       const hashedPassword = await JwtUtils.hashPassword(userData.password);
+
       // Create new user
       const user = await User.create({
         email: userData.email,
         password: hashedPassword,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        phone: userData.phone,
         isActive: true
       });
-      // Generate tokens
-      const userDoc = user as IUser & { _id: any };
-      const token = JwtUtils.generateToken({
-        userId: userDoc._id.toString(),
-        email: user.email
-      });
-      const refreshToken = JwtUtils.generateRefreshToken({
-        userId: userDoc._id.toString(),
-        email: user.email
-      });
-      const userWithoutPassword = user.toObject();
-      delete (userWithoutPassword as any).password;
+
+      // Send verification email (like in Java)
+      await this.emailService.sendVerification(userData.email);
+
       return {
         success: true,
-        message: 'User registered successfully',
-        data: {
-          token,
-          refreshToken,
-          user: userWithoutPassword
-        }
+        message: `Verification email sent to ${userData.email}`,
+        data: null
       };
     } catch (error) {
       if (error instanceof CustomError) {
@@ -61,19 +55,15 @@ export class UserService {
       // Find user by email
       const user = await User.findOne({ email: loginData.email });
       if (!user) {
-        throw new CustomError('Invalid email or password', 401);
+        throw new CustomError('Invalid credentials', 401);
       }
-      if (!user.isActive) {
-        throw new CustomError('Account is deactivated', 401);
-      }
+
       // Verify password
-      const isPasswordValid = await JwtUtils.comparePassword(
-        loginData.password,
-        user.password
-      );
-      if (!isPasswordValid) {
-        throw new CustomError('Invalid email or password', 401);
+      const isValidPassword = await JwtUtils.comparePassword(loginData.password, user.password);
+      if (!isValidPassword) {
+        throw new CustomError('Invalid credentials', 401);
       }
+
       // Generate tokens
       const userDoc = user as IUser & { _id: any };
       const token = JwtUtils.generateToken({
@@ -84,8 +74,10 @@ export class UserService {
         userId: userDoc._id.toString(),
         email: user.email
       });
+
       const userWithoutPassword = user.toObject();
       delete (userWithoutPassword as any).password;
+
       return {
         success: true,
         message: 'Login successful',

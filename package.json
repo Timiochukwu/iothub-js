@@ -15,7 +15,14 @@
     "clean": "rm -rf dist",
     "prebuild": "npm run clean"
   },
-  "keywords": ["iot", "backend", "typescript", "nodejs", "express", "mongodb"],
+  "keywords": [
+    "iot",
+    "backend",
+    "typescript",
+    "nodejs",
+    "express",
+    "mongodb"
+  ],
   "author": "IoT Hub Team",
   "license": "ISC",
   "dependencies": {
@@ -29,16 +36,25 @@
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "nodemailer": "^6.9.7",
+    "redis": "^4.6.10",
+    "socket.io": "^4.7.4",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.8",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.9.0",
+    "@types/nodemailer": "^6.4.14",
     "@types/supertest": "^2.0.16",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "jest": "^29.7.0",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3",

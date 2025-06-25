@@ -1,35 +1,45 @@
 import { Device, IDevice } from '../models/Device';
 import { User, IUser } from '../models/User';
-import { ApiResponse, PaginatedResponse } from '../types';
+import { ApiResponse, PaginatedResponse, DeviceDto, DeviceSwitchRequest } from '../types';
 import { CustomError } from '../middleware/errorHandler';
 import { Types } from 'mongoose';
 
 export class DeviceService {
-  async registerDevice(deviceData: {
-    imei: string;
-    userId: string;
-    name?: string;
-    description?: string;
-  }): Promise<ApiResponse> {
+  async registerDevice(email: string, deviceData: DeviceDto): Promise<ApiResponse> {
     try {
       // Check if user exists
-      const user = await User.findById(deviceData.userId);
+      const user = await User.findOne({ email });
       if (!user) {
         throw new CustomError('User not found', 404);
       }
-      // Check if device already exists
-      const existingDevice = await Device.findOne({ imei: deviceData.imei });
+
+      // Check if device already exists (IMEI + VIN combination)
+      const imei = deviceData.imei.trim();
+      const vin = deviceData.vin ? deviceData.vin.trim().toUpperCase() : '';
+      
+      const existingDevice = await Device.findOne({
+        $or: [
+          { imei: imei },
+          { $and: [{ imei: imei }, { vin: vin }] }
+        ]
+      });
+
       if (existingDevice) {
-        throw new CustomError('Device with this IMEI already exists', 409);
+        throw new CustomError('Device already exists', 409);
       }
+
       // Create new device
       const device = await Device.create({
-        imei: deviceData.imei,
+        imei: imei,
         user: user._id,
-        name: deviceData.name,
-        description: deviceData.description,
+        deviceType: deviceData.deviceType,
+        vin: vin,
+        make: deviceData.make,
+        modelYear: deviceData.modelYear,
+        plateNumber: deviceData.plateNumber,
         isActive: true
       });
+
       return {
         success: true,
         message: 'Device registered successfully',
@@ -85,18 +95,36 @@ export class DeviceService {
     }
   }
 
-  async switchActiveDevice(userId: string, imei: string): Promise<ApiResponse> {
+  async switchActiveDevice(switchRequest: DeviceSwitchRequest): Promise<ApiResponse> {
     try {
+      const { email, imei } = switchRequest;
+      
+      // Find user
+      const user = await User.findOne({ email });
+      if (!user) {
+        throw new CustomError('User not found', 404);
+      }
+
       // Find the device
-      const device = await Device.findOne({ imei, user: userId });
+      const device = await Device.findOne({ 
+        user: user._id, 
+        imei: imei 
+      });
+
       if (!device) {
         throw new CustomError('Device not found', 404);
       }
-      // Deactivate all user's devices
-      await Device.updateMany({ user: userId }, { isActive: false });
-      // Activate the specified device
+
+      // Set all user's devices to inactive
+      await Device.updateMany(
+        { user: user._id },
+        { isActive: false }
+      );
+
+      // Set the selected device as active
       device.isActive = true;
       await device.save();
+
       return {
         success: true,
         message: 'Active device switched successfully',
@@ -110,16 +138,30 @@ export class DeviceService {
     }
   }
 
-  async getActiveDevice(userId: string): Promise<ApiResponse> {
+  async getActiveDevice(email: string): Promise<ApiResponse> {
     try {
-      const device = await Device.findOne({ user: userId, isActive: true });
-      if (!device) {
-        throw new CustomError('No active device found', 404);
+      const user = await User.findOne({ email });
+      if (!user) {
+        throw new CustomError('User not found', 404);
       }
+
+      const activeDevice = await Device.findOne({ 
+        user: user._id, 
+        isActive: true 
+      });
+
+      if (!activeDevice) {
+        return {
+          success: true,
+          message: 'No active device found',
+          data: null
+        };
+      }
+
       return {
         success: true,
         message: 'Active device retrieved successfully',
-        data: device
+        data: activeDevice
       };
     } catch (error) {
       if (error instanceof CustomError) {
@@ -144,21 +186,22 @@ export class DeviceService {
     }
   }
 
-  async updateDevice(deviceId: string, userId: string, updateData: {
-    name?: string;
-    description?: string;
-    isActive?: boolean;
-  }): Promise<ApiResponse> {
+  async updateDevice(deviceId: string, updateData: Partial<DeviceDto>): Promise<ApiResponse> {
     try {
-      const device = await Device.findOne({ _id: deviceId, user: userId });
+      const device = await Device.findById(deviceId);
       if (!device) {
         throw new CustomError('Device not found', 404);
       }
+
       // Update device fields
-      if (updateData.name !== undefined) device.name = updateData.name;
-      if (updateData.description !== undefined) device.description = updateData.description;
-      if (updateData.isActive !== undefined) device.isActive = updateData.isActive;
+      if (updateData.deviceType !== undefined) device.deviceType = updateData.deviceType;
+      if (updateData.vin !== undefined) device.vin = updateData.vin;
+      if (updateData.make !== undefined) device.make = updateData.make;
+      if (updateData.modelYear !== undefined) device.modelYear = updateData.modelYear;
+      if (updateData.plateNumber !== undefined) device.plateNumber = updateData.plateNumber;
+
       await device.save();
+
       return {
         success: true,
         message: 'Device updated successfully',
@@ -207,6 +250,27 @@ export class DeviceService {
         throw error;
       }
       throw new CustomError('Failed to retrieve device', 500);
+    }
+  }
+
+  async listDevices(email: string): Promise<ApiResponse> {
+    try {
+      const user = await User.findOne({ email });
+      if (!user) {
+        throw new CustomError('User not found', 404);
+      }
+
+      const devices = await Device.find({ user: user._id });
+      return {
+        success: true,
+        message: 'Devices retrieved successfully',
+        data: devices
+      };
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      throw new CustomError('Failed to retrieve devices', 500);
     }
   }
 } 
