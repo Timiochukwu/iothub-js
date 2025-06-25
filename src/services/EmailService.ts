@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { CustomError } from "../middleware/errorHandler";
+import { User, IUser } from "../models/User";
 
 export class EmailService {
   private transporter: nodemailer.Transporter;
@@ -16,22 +17,18 @@ export class EmailService {
     });
   }
 
-  async sendVerification(to: string): Promise<void> {
+  async sendVerification(to: string, mail_message: string): Promise<void> {
+    if (!to) {
+      throw new CustomError("Email address is required", 400);
+    }
+
     try {
       const mailOptions = {
         from: process.env.SMTP_FROM || "noreply@iothub.com",
         to: to,
         subject: "Verify your FleetCheck account",
-        text: "Please verify your email to activate your account.",
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>Welcome to FleetCheck!</h2>
-            <p>Please verify your email to activate your account.</p>
-            <p>If you didn't create this account, please ignore this email.</p>
-            <br>
-            <p>Best regards,<br>The FleetCheck Team</p>
-          </div>
-        `,
+        text: mail_message,
+        html: mail_message,
       };
 
       await this.transporter.sendMail(mailOptions);

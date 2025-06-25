@@ -32,12 +32,15 @@ export interface LoginRequest {
 export interface LoginResponse {
   token: string;
   refreshToken: string;
-  user: Omit<User, 'password'>;
+  user: Omit<User, "password">;
 }
 
 export interface RegisterRequest {
   email: string;
   password: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
 }
 
 export interface ChangePasswordRequest {
@@ -139,15 +142,15 @@ export interface TelemetryPayload {
         evt?: number;
         pr?: number;
         sp?: number;
-        "16"?: number;  // Total mileage
-        "24"?: number;  // Speed
-        "30"?: number;  // DTC
-        "31"?: number;  // Engine load
-        "36"?: number;  // Engine RPM
-        "48"?: number;  // Fuel level
-        "58"?: number;  // Engine oil temp
-        "66"?: number;  // External voltage
-        "67"?: number;  // Battery voltage
+        "16"?: number; // Total mileage
+        "24"?: number; // Speed
+        "30"?: number; // DTC
+        "31"?: number; // Engine load
+        "36"?: number; // Engine RPM
+        "48"?: number; // Fuel level
+        "58"?: number; // Engine oil temp
+        "66"?: number; // External voltage
+        "67"?: number; // Battery voltage
         "247"?: number; // Crash detection
         "256"?: string; // VIN
       };
@@ -267,12 +270,16 @@ export interface VehicleHealthDTO {
 
 // Real-time Telemetry Types
 export interface RealTimeTelemetryEvent {
-  type: 'telemetry_update' | 'vehicle_alert' | 'crash_detected' | 'health_warning';
+  type:
+    | "telemetry_update"
+    | "vehicle_alert"
+    | "crash_detected"
+    | "health_warning";
   imei: string;
   timestamp: number;
   data: TelemetryData;
   alert?: {
-    level: 'info' | 'warning' | 'critical';
+    level: "info" | "warning" | "critical";
     message: string;
     code: string;
   };
@@ -290,4 +297,4 @@ export interface DeviceConnection {
   connectedAt: number;
   lastHeartbeat: number;
   userEmail?: string;
-} 
+}

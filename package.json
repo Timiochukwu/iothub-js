@@ -41,7 +41,8 @@
     "redis": "^4.6.10",
     "socket.io": "^4.7.4",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
