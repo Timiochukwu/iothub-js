@@ -26,6 +26,7 @@ export interface ITelemetry extends Document {
 
 const TelemetrySchema = new Schema<ITelemetry>(
   {
+    _id: { type: Schema.Types.ObjectId, auto: true },
     imei: { type: String, required: true, index: true },
     timestamp: { type: Number, required: true, index: true },
     tirePressure: { type: Number },
