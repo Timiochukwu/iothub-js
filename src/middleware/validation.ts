@@ -1,9 +1,13 @@
-import { Request, Response, NextFunction } from 'express';
-import Joi from 'joi';
-import { ApiResponse } from '../types';
+import { Request, Response, NextFunction } from "express";
+import Joi from "joi";
+import { ApiResponse } from "../types";
 
 export const validateRequest = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response<ApiResponse>, next: NextFunction): void => {
+  return (
+    req: Request,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ): void => {
     const { error, value } = schema.validate(req.body, {
       abortEarly: false,
       stripUnknown: true,
@@ -12,12 +16,12 @@ export const validateRequest = (schema: Joi.ObjectSchema) => {
     if (error) {
       const errorMessage = error.details
         .map((detail) => detail.message)
-        .join(', ');
-      
+        .join(", ");
+
       res.status(400).json({
         success: false,
-        message: 'Validation failed',
-        error: errorMessage
+        message: "Validation failed",
+        error: errorMessage,
       });
       return;
     }
@@ -28,7 +32,11 @@ export const validateRequest = (schema: Joi.ObjectSchema) => {
 };
 
 export const validateQuery = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response<ApiResponse>, next: NextFunction): void => {
+  return (
+    req: Request,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ): void => {
     const { error, value } = schema.validate(req.query, {
       abortEarly: false,
       stripUnknown: true,
@@ -37,12 +45,12 @@ export const validateQuery = (schema: Joi.ObjectSchema) => {
     if (error) {
       const errorMessage = error.details
         .map((detail) => detail.message)
-        .join(', ');
-      
+        .join(", ");
+
       res.status(400).json({
         success: false,
-        message: 'Query validation failed',
-        error: errorMessage
+        message: "Query validation failed",
+        error: errorMessage,
       });
       return;
     }
@@ -53,7 +61,11 @@ export const validateQuery = (schema: Joi.ObjectSchema) => {
 };
 
 export const validateParams = (schema: Joi.ObjectSchema) => {
-  return (req: Request, res: Response<ApiResponse>, next: NextFunction): void => {
+  return (
+    req: Request,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ): void => {
     const { error, value } = schema.validate(req.params, {
       abortEarly: false,
       stripUnknown: true,
@@ -62,12 +74,12 @@ export const validateParams = (schema: Joi.ObjectSchema) => {
     if (error) {
       const errorMessage = error.details
         .map((detail) => detail.message)
-        .join(', ');
-      
+        .join(", ");
+
       res.status(400).json({
         success: false,
-        message: 'Parameter validation failed',
-        error: errorMessage
+        message: "Parameter validation failed",
+        error: errorMessage,
       });
       return;
     }
@@ -75,4 +87,4 @@ export const validateParams = (schema: Joi.ObjectSchema) => {
     req.params = value;
     next();
   };
-}; 
+};

@@ -1,8 +1,8 @@
-import { Router } from 'express';
-import { DeviceController } from '../controllers/DeviceController';
-import { validateRequest, validateQuery } from '../middleware/validation';
-import { deviceSchemas, querySchemas } from '../utils/validationSchemas';
-import { authenticateToken } from '../middleware/auth';
+import { Router } from "express";
+import { DeviceController } from "../controllers/DeviceController";
+import { validateRequest, validateQuery } from "../middleware/validation";
+import { deviceSchemas, querySchemas } from "../utils/validationSchemas";
+import { authenticateToken } from "../middleware/auth";
 
 const router = Router();
 const deviceController = new DeviceController();
@@ -62,18 +62,36 @@ const deviceController = new DeviceController();
  */
 
 // Device routes (matching Java implementation)
-router.post('/register', validateRequest(deviceSchemas.register), deviceController.register);
-router.get('/', deviceController.listDevices);
-router.post('/switch', validateRequest(deviceSchemas.switch), deviceController.switchDevice);
-router.get('/active', deviceController.getActiveDevice);
+router.post(
+  "/register",
+  authenticateToken,
+  validateRequest(deviceSchemas.register),
+  deviceController.register
+);
+router.get("/", authenticateToken, deviceController.listDevices);
+router.post(
+  "/switch",
+  authenticateToken,
+  validateRequest(deviceSchemas.switch),
+  deviceController.switchDevice
+);
+router.get("/active", authenticateToken, deviceController.getActiveDevice);
 
 // Device management routes (authenticated)
-router.put('/:deviceId', authenticateToken, validateRequest(deviceSchemas.update), deviceController.updateDevice);
-router.delete('/:deviceId', authenticateToken, deviceController.deleteDevice);
+router.put(
+  "/:deviceId",
+  authenticateToken,
+  validateRequest(deviceSchemas.update),
+  deviceController.updateDevice
+);
+router.delete("/:deviceId", authenticateToken, deviceController.deleteDevice);
 
 // Device routes (by email - for compatibility with existing API)
-router.get('/by-email', validateQuery(querySchemas.email), deviceController.getDevicesByEmail);
-router.get('/imei/:imei', deviceController.getDeviceByImei);
+router.get(
+  "/by-email",
+  validateQuery(querySchemas.email),
+  deviceController.getDevicesByEmail
+);
+router.get("/imei/:imei", deviceController.getDeviceByImei);
 
-export default router; 
- 
+export default router;

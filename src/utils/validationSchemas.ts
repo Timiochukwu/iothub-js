@@ -1,54 +1,61 @@
-import Joi from 'joi';
+import Joi from "joi";
 
 export const userSchemas = {
   register: Joi.object({
     email: Joi.string().email().required().messages({
-      'string.email': 'Please provide a valid email address',
-      'any.required': 'Email is required'
+      "string.email": "Please provide a valid email address",
+      "any.required": "Email is required",
     }),
     password: Joi.string().min(8).required().messages({
-      'string.min': 'Password must be at least 8 characters long',
-      'any.required': 'Password is required'
-    })
+      "string.min": "Password must be at least 8 characters long",
+      "any.required": "Password is required",
+    }),
+    firstName: Joi.string().min(2).max(100).optional(),
+    lastName: Joi.string().min(2).max(100).optional(),
+    phone: Joi.string()
+      .pattern(/^\+?[\d\s\-\(\)]+$/)
+      .optional(),
   }),
 
   login: Joi.object({
     email: Joi.string().email().required().messages({
-      'string.email': 'Please provide a valid email address',
-      'any.required': 'Email is required'
+      "string.email": "Please provide a valid email address",
+      "any.required": "Email is required",
     }),
     password: Joi.string().required().messages({
-      'any.required': 'Password is required'
-    })
+      "any.required": "Password is required",
+    }),
   }),
 
   changePassword: Joi.object({
     email: Joi.string().email().required(),
     currentPassword: Joi.string().required(),
     newPassword: Joi.string().min(8).required().messages({
-      'string.min': 'New password must be at least 8 characters long'
-    })
+      "string.min": "New password must be at least 8 characters long",
+    }),
   }),
 
   update: Joi.object({
     email: Joi.string().email().required(),
     firstName: Joi.string().min(2).max(100).optional(),
     lastName: Joi.string().min(2).max(100).optional(),
-    phone: Joi.string().pattern(/^\+?[\d\s\-\(\)]+$/).optional()
-  })
+    phone: Joi.string()
+      .pattern(/^\+?[\d\s\-\(\)]+$/)
+      .optional(),
+  }),
 };
 
 export const deviceSchemas = {
   register: Joi.object({
     imei: Joi.string().length(15).pattern(/^\d+$/).required().messages({
-      'string.length': 'IMEI must be exactly 15 digits',
-      'string.pattern.base': 'IMEI must contain only digits'
+      "string.length": "IMEI must be exactly 15 digits",
+      "string.pattern.base": "IMEI must contain only digits",
     }),
     deviceType: Joi.string().optional(),
     vin: Joi.string().optional(),
     make: Joi.string().optional(),
     modelYear: Joi.string().optional(),
-    plateNumber: Joi.string().optional()
+    plateNumber: Joi.string().optional(),
   }),
 
   update: Joi.object({
@@ -57,42 +64,42 @@ export const deviceSchemas = {
     make: Joi.string().optional(),
     modelYear: Joi.string().optional(),
     plateNumber: Joi.string().optional(),
-    isActive: Joi.boolean().optional()
+    isActive: Joi.boolean().optional(),
   }),
 
   switch: Joi.object({
     email: Joi.string().email().required(),
-    imei: Joi.string().length(15).pattern(/^\d+$/).required()
-  })
+    imei: Joi.string().length(15).pattern(/^\d+$/).required(),
+  }),
 };
 
 export const querySchemas = {
   email: Joi.object({
-    email: Joi.string().email().required()
+    email: Joi.string().email().required(),
   }),
 
   pagination: Joi.object({
     page: Joi.number().integer().min(1).default(1),
-    limit: Joi.number().integer().min(1).max(100).default(10)
-  })
+    limit: Joi.number().integer().min(1).max(100).default(10),
+  }),
 };
 
 export const telemetrySchemas = {
   ingest: Joi.object({
     imei: Joi.string().required().messages({
-      'any.required': 'IMEI is required'
+      "any.required": "IMEI is required",
     }),
     payload: Joi.object({
       state: Joi.object({
-        reported: Joi.object().required()
-      }).required()
-    }).required()
+        reported: Joi.object().required(),
+      }).required(),
+    }).required(),
   }),
 
   userQuery: Joi.object({
     email: Joi.string().email().required().messages({
-      'string.email': 'Please provide a valid email address',
-      'any.required': 'Email is required'
-    })
-  })
-}; 
+      "string.email": "Please provide a valid email address",
+      "any.required": "Email is required",
+    }),
+  }),
+};
