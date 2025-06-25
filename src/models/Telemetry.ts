@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface ITelemetry extends Document {
-  _id?: Types.ObjectId;
+  _id: Types.ObjectId;
   imei: string;
   timestamp: number;
   tirePressure?: number;
@@ -26,7 +26,6 @@ export interface ITelemetry extends Document {
 
 const TelemetrySchema = new Schema<ITelemetry>(
   {
-    _id: { type: Schema.Types.ObjectId, auto: true },
     imei: { type: String, required: true, index: true },
     timestamp: { type: Number, required: true, index: true },
     tirePressure: { type: Number },
