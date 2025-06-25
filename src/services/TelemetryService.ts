@@ -1,5 +1,4 @@
 import { Telemetry, ITelemetry } from "../models/Telemetry";
-import { Document, Types } from "mongoose"; // Add Types here
 import { Device } from "../models/Device";
 import {
   TelemetryData,
@@ -54,7 +53,7 @@ export class TelemetryService {
       return {
         success: true,
         message: "Telemetry data ingested successfully",
-        data: { id: telemetry._id.toString() },
+        data: { id: telemetry._id!.toString() },
       };
     } catch (error) {
       throw new CustomError("Failed to ingest telemetry data", 500);
@@ -390,7 +389,7 @@ export class TelemetryService {
 
   private mapToTelemetryData(telemetry: ITelemetry): TelemetryData {
     return {
-      id: telemetry._id.toString(),
+      id: telemetry._id!.toString(),
       imei: telemetry.imei,
       timestamp: telemetry.timestamp,
       tirePressure: telemetry.tirePressure,
