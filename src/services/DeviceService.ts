@@ -115,10 +115,12 @@ export class DeviceService {
     switchRequest: DeviceSwitchRequest
   ): Promise<ApiResponse> {
     try {
-      const { email, imei } = switchRequest;
+      const { userId, imei } = switchRequest;
+
+      console.log(switchRequest);
 
       // Find user
-      const user = await User.findOne({ email });
+      const user = await User.findOne({ _id: userId });
       if (!user) {
         throw new CustomError("User not found", 404);
       }

@@ -101,7 +101,7 @@ export interface DeviceDto {
 }
 
 export interface DeviceSwitchRequest {
-  email: string;
+  userId: string;
   imei: string;
 }
 

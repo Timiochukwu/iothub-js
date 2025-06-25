@@ -68,7 +68,8 @@ export const deviceSchemas = {
   }),
 
   switch: Joi.object({
-    email: Joi.string().email().required(),
+    // email: Joi.string().email().required(),
+    // userId: Joi.string().required(),
     imei: Joi.string().length(15).pattern(/^\d+$/).required(),
   }),
 };

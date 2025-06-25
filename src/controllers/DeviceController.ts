@@ -77,9 +77,13 @@ export class DeviceController {
   };
 
   // POST /api/devices/switch
-  switchDevice = async (req: Request, res: Response): Promise<void> => {
+  switchDevice = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
       const switchRequest: DeviceSwitchRequest = req.body;
+      switchRequest.userId = req.user?.userId || "";
       const result = await this.deviceService.switchActiveDevice(switchRequest);
       res.status(200).json(result);
     } catch (error) {
