@@ -1,14 +1,14 @@
-import nodemailer from 'nodemailer';
-import { CustomError } from '../middleware/errorHandler';
+import nodemailer from "nodemailer";
+import { CustomError } from "../middleware/errorHandler";
 
 export class EmailService {
   private transporter: nodemailer.Transporter;
 
   constructor() {
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_SERVER,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SSL === 'true',
+      port: parseInt(process.env.SMTP_PORT || "587"),
+      secure: process.env.SMTP_SSL === "true",
       auth: {
         user: process.env.SMTP_USERNAME,
         pass: process.env.SMTP_PASSWORD,
@@ -19,10 +19,10 @@ export class EmailService {
   async sendVerification(to: string): Promise<void> {
     try {
       const mailOptions = {
-        from: process.env.SMTP_FROM || 'noreply@iothub.com',
+        from: process.env.SMTP_FROM || "noreply@iothub.com",
         to: to,
-        subject: 'Verify your FleetCheck account',
-        text: 'Please verify your email to activate your account.',
+        subject: "Verify your FleetCheck account",
+        text: "Please verify your email to activate your account.",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2>Welcome to FleetCheck!</h2>
@@ -31,7 +31,7 @@ export class EmailService {
             <br>
             <p>Best regards,<br>The FleetCheck Team</p>
           </div>
-        `
+        `,
       };
 
       await this.transporter.sendMail(mailOptions);
@@ -39,16 +39,20 @@ export class EmailService {
     } catch (error) {
       console.error(`Failed to send email to ${to}:`, error);
       // In this sample environment, just log the failure (like in Java)
-      throw new CustomError('Failed to send verification email', 500);
+      throw new CustomError("Failed to send verification email", 500);
     }
   }
 
-  async sendPasswordReset(to: string, tempPassword: string, userName: string): Promise<void> {
+  async sendPasswordReset(
+    to: string,
+    tempPassword: string,
+    userName: string
+  ): Promise<void> {
     try {
       const mailOptions = {
-        from: process.env.SMTP_FROM || 'noreply@iothub.com',
+        from: process.env.SMTP_FROM || "noreply@iothub.com",
         to: to,
-        subject: 'User Password Reset',
+        subject: "User Password Reset",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2>Password Reset Request</h2>
@@ -58,14 +62,14 @@ export class EmailService {
             <br>
             <p>Best regards,<br>The FleetCheck Team</p>
           </div>
-        `
+        `,
       };
 
       await this.transporter.sendMail(mailOptions);
       console.log(`Password reset email sent to ${to}`);
     } catch (error) {
       console.error(`Failed to send password reset email to ${to}:`, error);
-      throw new CustomError('Failed to send password reset email', 500);
+      throw new CustomError("Failed to send password reset email", 500);
     }
   }
-} 
+}
