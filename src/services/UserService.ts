@@ -124,6 +124,7 @@ export class UserService {
       const token = JwtUtils.generateToken({
         userId: userDoc._id.toString(),
         email: user.email,
+        roles: user.roles,
       });
       const refreshToken = JwtUtils.generateRefreshToken({
         userId: userDoc._id.toString(),
@@ -160,6 +161,7 @@ export class UserService {
       const token = JwtUtils.generateToken({
         userId: userDoc._id.toString(),
         email: user.email,
+        roles: user.roles,
       });
       const refreshToken = JwtUtils.generateRefreshToken({
         userId: userDoc._id.toString(),

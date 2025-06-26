@@ -87,6 +87,10 @@ export const AdminAuth = (
     }
     const token = JwtUtils.extractTokenFromHeader(authHeader);
     const decoded = JwtUtils.verifyToken(token);
+
+    if (!decoded.roles) {
+      decoded.roles = [];
+    }
     if (decoded.roles && !decoded.roles.includes("admin")) {
       res.status(403).json({
         success: false,

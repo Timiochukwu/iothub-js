@@ -8,7 +8,7 @@ export interface IUser extends Document {
   phone?: string;
   isActive: boolean;
   verified?: boolean;
-  roles: string[];
+  roles?: string[];
   verificationToken?: string;
   resetPasswordToken?: string;
   createdAt: Date;
