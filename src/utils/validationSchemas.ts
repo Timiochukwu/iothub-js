@@ -45,6 +45,29 @@ export const userSchemas = {
   }),
 };
 
+export const deviceTypeSchemas = {
+  create: Joi.object({
+    name: Joi.string().min(2).max(100).required().messages({
+      "string.min": "Name must be at least 2 characters long",
+      "string.max": "Name must be at most 100 characters long",
+      "any.required": "Name is required",
+    }),
+    description: Joi.string().max(500).optional().messages({
+      "string.max": "Description must be at most 500 characters long",
+    }),
+  }),
+
+  update: Joi.object({
+    name: Joi.string().min(2).max(100).optional().messages({
+      "string.min": "Name must be at least 2 characters long",
+      "string.max": "Name must be at most 100 characters long",
+    }),
+    description: Joi.string().max(500).optional().messages({
+      "string.max": "Description must be at most 500 characters long",
+    }),
+  }),
+};
+
 export const deviceSchemas = {
   register: Joi.object({
     imei: Joi.string().length(15).pattern(/^\d+$/).required().messages({

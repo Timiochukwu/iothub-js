@@ -8,6 +8,7 @@ export interface IUser extends Document {
   phone?: string;
   isActive: boolean;
   verified?: boolean;
+  roles: string[];
   verificationToken?: string;
   resetPasswordToken?: string;
   createdAt: Date;
@@ -23,6 +24,7 @@ const UserSchema = new Schema<IUser>(
     phone: { type: String },
     isActive: { type: Boolean, default: true },
     verified: { type: Boolean, default: false },
+    roles: { type: [String], default: ["user"] },
     verificationToken: { type: String },
     resetPasswordToken: { type: String },
     createdAt: { type: Date, default: Date.now },

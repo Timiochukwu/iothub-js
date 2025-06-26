@@ -69,6 +69,7 @@ export interface PaginatedResponse<T> {
 export interface JwtPayload {
   userId: string;
   email: string;
+  roles?: string[];
   iat?: number;
   exp?: number;
 }
@@ -98,6 +99,11 @@ export interface DeviceDto {
   make?: string;
   modelYear?: string;
   plateNumber?: string;
+}
+
+export interface DeviceTypeDto {
+  name: string;
+  description?: string;
 }
 
 export interface DeviceSwitchRequest {

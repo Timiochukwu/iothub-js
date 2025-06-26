@@ -1,11 +1,17 @@
 import { Router } from "express";
 import { DeviceController } from "../controllers/DeviceController";
+import { DeviceTypeController } from "../controllers/DeviceTypeController";
 import { validateRequest, validateQuery } from "../middleware/validation";
-import { deviceSchemas, querySchemas } from "../utils/validationSchemas";
-import { authenticateToken } from "../middleware/auth";
+import {
+  deviceSchemas,
+  deviceTypeSchemas,
+  querySchemas,
+} from "../utils/validationSchemas";
+import { authenticateToken, AdminAuth } from "../middleware/auth";
 
 const router = Router();
 const deviceController = new DeviceController();
+const deviceTypeController = new DeviceTypeController();
 
 /**
  * @swagger
@@ -60,6 +66,24 @@ const deviceController = new DeviceController();
  *       401:
  *         description: Unauthorized
  */
+
+//Device Type
+// Device type routes (authenticated)
+router.get("/types", deviceTypeController.listDeviceTypes);
+router.get("/types/:typeId", AdminAuth, deviceTypeController.getDeviceTypeById);
+router.put(
+  "/types/:typeId",
+  AdminAuth,
+  validateRequest(deviceTypeSchemas.update),
+  deviceTypeController.updateDeviceType
+);
+
+router.post(
+  "/types",
+  AdminAuth,
+  validateRequest(deviceTypeSchemas.create),
+  deviceTypeController.createDeviceType
+);
 
 // Device routes (matching Java implementation)
 router.post(
