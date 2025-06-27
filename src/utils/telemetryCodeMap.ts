@@ -1,0 +1,21 @@
+export const telemetryCodeMap: Record<string, string> = {
+  "16": "totalMileage",
+  "24": "speed",
+  "sp": "speed",
+  "31": "engineLoad",
+  "30": "dtc",
+  "36": "engineRpm",
+  "48": "fuelLevel",
+  "58": "engineOilTemp",
+  "66": "externalVoltage",
+  "67": "battery",
+  "247": "crashDetection",
+  "pr": "tirePressure",
+  "latlng": "latlng",
+  "alt": "altitude",
+  "ang": "angle",
+  "sat": "satellites",
+  "evt": "event",
+  "ts": "timestamp",
+  "256": "vin"
+}; 

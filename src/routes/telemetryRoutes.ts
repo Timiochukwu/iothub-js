@@ -29,5 +29,7 @@ router.get('/dtc', authenticateToken, telemetryController.getDtc);
 router.get('/power-stats', authenticateToken, telemetryController.getPowerStats);
 router.get('/mileage', authenticateToken, telemetryController.getTotalMileage);
 router.get('/vehicle-health', authenticateToken, telemetryController.getVehicleHealthStatus);
+router.get('/car-state', authenticateToken, telemetryController.getCarState);
+router.get('/location-history', authenticateToken, telemetryController.getLocationHistory);
 
 export default router; 

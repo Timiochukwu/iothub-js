@@ -118,4 +118,10 @@ router.get(
 );
 router.get("/imei/:imei", deviceController.getDeviceByImei);
 
+router.get('/:imei/vin', authenticateToken, deviceController.getDeviceVin);
+
+router.post('/:imei/vehicle-info', authenticateToken, deviceController.submitVehicleInfo);
+
+router.get('/:imei', authenticateToken, deviceController.getDeviceByImei);
+
 export default router;

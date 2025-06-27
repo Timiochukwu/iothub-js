@@ -10,6 +10,8 @@ import {
   TelemetryPayload
 } from '../types';
 import { CustomError } from '../middleware/errorHandler';
+import { Geofence } from '../models/Geofence';
+import { GeofenceEvent } from '../models/GeofenceEvent';
 
 export class RealTimeService {
   private io: SocketIOServer;
@@ -35,20 +37,42 @@ export class RealTimeService {
       // Handle device registration
       socket.on('register_device', async (data: { imei: string; userEmail?: string }) => {
         try {
+          console.log('🔍 Attempting to register device:', data);
           await this.registerDevice(socket, data.imei, data.userEmail);
         } catch (error) {
-          socket.emit('error', { message: 'Failed to register device' });
+          console.error('❌ Device registration error:', error);
+          socket.emit('error', { 
+            message: 'Failed to register device',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
         }
       });
 
-      // Handle real-time telemetry ingestion
+    
+
       socket.on('telemetry_data', async (payload: TelemetryPayload) => {
         try {
+          // Validate payload structure
+          if (!this.validateTelemetryPayload(payload)) {
+            socket.emit('error', { 
+              code: 'INVALID_PAYLOAD', 
+              message: 'Invalid telemetry payload structure' 
+            });
+            return;
+          }
+          
           await this.processRealTimeTelemetry(socket, payload);
         } catch (error) {
-          socket.emit('error', { message: 'Failed to process telemetry data' });
+          console.error(`Telemetry processing error for ${payload.imei}:`, error);
+          socket.emit('error', { 
+            code: 'PROCESSING_ERROR',
+            message: 'Failed to process telemetry data',
+            details: error instanceof CustomError ? error.message : 'Internal error'
+          });
         }
       });
+
+      
 
       // Handle heartbeat
       socket.on('heartbeat', (data: { imei: string }) => {
@@ -58,9 +82,14 @@ export class RealTimeService {
       // Handle user subscription
       socket.on('subscribe_user', async (data: { email: string }) => {
         try {
+          console.log('🔍 Attempting to subscribe user:', data);
           await this.subscribeUser(socket, data.email);
         } catch (error) {
-          socket.emit('error', { message: 'Failed to subscribe user' });
+          console.error('❌ User subscription error:', error);
+          socket.emit('error', { 
+            message: 'Failed to subscribe user',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
         }
       });
 
@@ -71,49 +100,53 @@ export class RealTimeService {
     });
   }
 
+  private validateTelemetryPayload(payload: TelemetryPayload): boolean {
+    return !!(
+      payload &&
+      payload.imei &&
+      payload.payload &&
+      payload.payload.state &&
+      payload.payload.state.reported
+    );
+  }
+
   private async registerDevice(socket: Socket, imei: string, userEmail?: string) {
-    // Verify device exists in database
-    const device = await Device.findOne({ imei });
-    if (!device) {
-      throw new CustomError('Device not found', 404);
-    }
-
-    // Store connection info
-    const connection: DeviceConnection = {
-      imei,
-      socketId: socket.id,
-      connectedAt: Date.now(),
-      lastHeartbeat: Date.now(),
-      userEmail: userEmail || device.user.toString()
-    };
-
-    this.deviceConnections.set(imei, connection);
-
-    // Join device room
-    socket.join(`device:${imei}`);
+    console.log('🔍 Looking for device with IMEI:', imei);
     
-    // Join user room if email provided
-    if (userEmail) {
-      socket.join(`user:${userEmail}`);
-      this.addUserToRoom(userEmail, socket.id);
+    try {
+      // Test database connection
+      const device = await Device.findOne({ imei });
+      console.log('🔍 Device query result:', device ? 'Found' : 'Not found');
+      
+      if (!device) {
+        console.log('❌ Device not found in database');
+        throw new CustomError('Device not found', 404);
+      }
+      
+      console.log('✅ Device found:', { imei: device.imei, user: device.user });
+      
+      // Rest of your existing code...
+    } catch (dbError) {
+      console.error('❌ Database error:', dbError);
+      throw dbError;
     }
-
-    socket.emit('device_registered', { 
-      imei, 
-      message: 'Device registered successfully' 
-    });
-
-    console.log(`📱 Device registered: ${imei} (${socket.id})`);
   }
 
   private async processRealTimeTelemetry(socket: Socket, payload: TelemetryPayload) {
     const { imei } = payload;
+  
+  try {
+    console.log('🔄 Processing telemetry for IMEI:', imei);
     
     // Store in database
+    console.log('💾 Storing in database...');
     const result = await this.telemetryService.ingestTelemetry(payload);
+    console.log('✅ Database storage completed:', result);
     
     // Get processed telemetry data
+    console.log('📊 Fetching latest telemetry...');
     const telemetryData = await this.telemetryService.getLatestTelemetry();
+    console.log('✅ Latest telemetry fetched:', telemetryData ? 'Found' : 'Not found');
     
     if (telemetryData) {
       // Create real-time event
@@ -143,11 +176,104 @@ export class RealTimeService {
       // Broadcast to all connected clients (for dashboard)
       this.io.emit('telemetry_broadcast', event);
 
+      // --- Real-time car state event ---
+      const carState = (telemetryData.engineRpm && telemetryData.engineRpm > 0) || (telemetryData.speed && telemetryData.speed > 0) ? 'on' : 'off';
+      const carStatePayload = {
+        imei,
+        state: carState,
+        engineRpm: telemetryData.engineRpm,
+        speed: telemetryData.speed,
+        timestamp: telemetryData.timestamp
+      };
+      this.io.to(`device:${imei}`).emit('car_state_changed', carStatePayload);
+      if (connection?.userEmail) {
+        this.io.to(`user:${connection.userEmail}`).emit('car_state_changed', carStatePayload);
+      }
+
+      // --- Real-time location event ---
+      if (telemetryData.latlng) {
+        const locationPayload = {
+          imei,
+          latlng: telemetryData.latlng,
+          timestamp: telemetryData.timestamp,
+          altitude: telemetryData.altitude,
+          angle: telemetryData.angle
+        };
+        this.io.to(`device:${imei}`).emit('location_changed', locationPayload);
+        if (connection?.userEmail) {
+          this.io.to(`user:${connection.userEmail}`).emit('location_changed', locationPayload);
+        }
+      }
+
+      // --- Geofence entry/exit detection ---
+      if (telemetryData && telemetryData.latlng) {
+        const [latStr, lngStr] = telemetryData.latlng.split(',');
+        if (typeof latStr === 'string' && typeof lngStr === 'string') {
+          const lat = parseFloat(latStr);
+          const lng = parseFloat(lngStr);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            const geofences = await Geofence.find({ $or: [
+              { deviceImei: imei },
+              { userEmail: connection?.userEmail },
+              { deviceImei: { $exists: false } },
+              { userEmail: { $exists: false } }
+            ] });
+            for (const geofence of geofences) {
+              if (!geofence._id) continue; // skip if _id is null
+              let inside = false;
+              if (geofence.type === 'circle' && geofence.center && geofence.radius) {
+                inside = haversineDistance(lat, lng, geofence.center.lat, geofence.center.lng) <= geofence.radius;
+              } else if (geofence.type === 'polygon' && geofence.coordinates) {
+                inside = pointInPolygon({ lat, lng }, geofence.coordinates);
+              }
+              const geofenceId = typeof geofence._id === 'object' && 'toString' in geofence._id
+                ? geofence._id.toString()
+                : String(geofence._id);
+              const deviceState = lastGeofenceState[imei] = lastGeofenceState[imei] || {};
+              const prevInside = deviceState[geofenceId] || false;
+              if (inside !== prevInside) {
+                // State changed: entry or exit
+                const eventType = inside ? 'entry' : 'exit';
+                // Store event
+                await GeofenceEvent.create({
+                  imei,
+                  geofenceId: geofence._id,
+                  type: eventType,
+                  timestamp: telemetryData.timestamp,
+                  latlng: telemetryData.latlng,
+                  altitude: telemetryData.altitude,
+                  angle: telemetryData.angle
+                });
+                // Emit event
+                const geofenceEventPayload = {
+                  imei,
+                  geofenceId: geofence._id,
+                  type: eventType,
+                  timestamp: telemetryData.timestamp,
+                  latlng: telemetryData.latlng,
+                  altitude: telemetryData.altitude,
+                  angle: telemetryData.angle
+                };
+                this.io.to(`device:${imei}`).emit('geofence_' + eventType, geofenceEventPayload);
+                if (connection?.userEmail) {
+                  this.io.to(`user:${connection.userEmail}`).emit('geofence_' + eventType, geofenceEventPayload);
+                }
+              }
+              deviceState[geofenceId] = inside;
+            }
+          }
+        }
+      }
+
       console.log(`📊 Real-time telemetry: ${imei} - ${event.type}`);
     }
 
     socket.emit('telemetry_processed', result);
+  } catch (error) {
+    console.error('❌ Error in processRealTimeTelemetry:', error);
+    throw error; // Re-throw to be caught by caller
   }
+}
 
   private checkForAlerts(telemetryData: TelemetryData): any {
     const alerts = [];
@@ -290,4 +416,35 @@ export class RealTimeService {
       }
     }
   }
-} 
+}
+
+// Helper functions for geofence checks
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const R = 6371000; // meters
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function pointInPolygon(point: { lat: number; lng: number }, polygon: Array<{ lat: number; lng: number }>) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const pi = polygon[i];
+    const pj = polygon[j];
+    if (!pi || !pj || pi.lat == null || pi.lng == null || pj.lat == null || pj.lng == null) continue;
+    const xi = pi.lat, yi = pi.lng;
+    const xj = pj.lat, yj = pj.lng;
+    const intersect = ((yi > point.lng) !== (yj > point.lng)) &&
+      (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi + 0.0000001) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// In-memory cache for last geofence state per device/geofence
+const lastGeofenceState: Record<string, Record<string, boolean>> = {}; 

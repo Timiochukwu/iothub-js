@@ -1,0 +1,72 @@
+.
+├── Device_Registration.postman_collection.json
+├── Geofence_Test.postman_collection.json
+├── IoT_Hub_API.postman_collection.json
+├── IoT_Hub_Environment.postman_environment.json
+├── POSTMAN_TESTING_GUIDE.md
+├── README.md
+├── REALTIME_README.md
+├── TELEMETRY_README.md
+├── ecosystem.config.js
+├── env.example
+├── file_structure.txt
+├── jest.config.js
+├── nodemon.json
+├── package-lock.json
+├── package.json
+├── src
+│   ├── config
+│   │   ├── database.ts
+│   │   └── swagger.ts
+│   ├── controllers
+│   │   ├── DeviceController.ts
+│   │   ├── DeviceTypeController.ts
+│   │   ├── GeofenceController.ts
+│   │   ├── RealTimeController.ts
+│   │   ├── TelemetryController.ts
+│   │   └── UserController.ts
+│   ├── index.ts
+│   ├── middleware
+│   │   ├── auth.ts
+│   │   ├── errorHandler.ts
+│   │   └── validation.ts
+│   ├── models
+│   │   ├── Device.ts
+│   │   ├── DeviceType.ts
+│   │   ├── Geofence.ts
+│   │   ├── GeofenceEvent.ts
+│   │   ├── Telemetry.ts
+│   │   └── User.ts
+│   ├── routes
+│   │   ├── authRoutes.ts
+│   │   ├── deviceRoutes.ts
+│   │   ├── geofenceRoutes.ts
+│   │   ├── realtimeRoutes.ts
+│   │   ├── telemetryRoutes.ts
+│   │   └── userRoutes.ts
+│   ├── services
+│   │   ├── DeviceService.ts
+│   │   ├── DeviceTypeService.ts
+│   │   ├── EmailService.ts
+│   │   ├── GeofenceService.ts
+│   │   ├── RealTimeService.ts
+│   │   ├── TelemetryService.ts
+│   │   └── UserService.ts
+│   ├── test
+│   │   └── setup.ts
+│   ├── types
+│   │   ├── TelemetryDTO.ts
+│   │   ├── bcryptjs.d.ts
+│   │   └── index.ts
+│   └── utils
+│       ├── jwt.ts
+│       ├── mapTelemetry.ts
+│       ├── telemetryCodeMap.ts
+│       └── validationSchemas.ts
+├── test-realtime.js
+├── tsconfig.json
+├── types
+│   └── bcryptjs.d.ts
+└── yarn.lock
+
+12 directories, 58 files

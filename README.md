@@ -287,4 +287,105 @@ For support and questions:
 
 ---
 
-**Note**: This is a conversion from a Java Spring Boot project to Node.js TypeScript, maintaining full compatibility with the original OBD2 telemetry system while adding modern real-time capabilities. 
+**Note**: This is a conversion from a Java Spring Boot project to Node.js TypeScript, maintaining full compatibility with the original OBD2 telemetry system while adding modern real-time capabilities.
+
+## Device Registration Flow
+
+This backend supports a multi-step device registration flow as shown in the Figma UI:
+
+### 1. Register Device
+**Endpoint:** `POST /api/devices/register`
+
+**Request Body Example:**
+```json
+{
+  "imei": "864636069379085",
+  "deviceType": "My car pro"
+}
+```
+**Headers:**
+- `Authorization: Bearer <JWT_TOKEN>`
+
+---
+
+### 2. Fetch VIN from Device
+**Endpoint:** `GET /api/devices/:imei/vin`
+
+**Example:**
+```
+GET /api/devices/864636069379085/vin
+```
+**Response:**
+```json
+{
+  "success": true,
+  "vin": "WBA4G5C56FG123456"
+}
+```
+If not found:
+```json
+{
+  "success": false,
+  "message": "VIN not found in latest telemetry",
+  "error": "VIN_NOT_FOUND"
+}
+```
+
+---
+
+### 3. Submit Vehicle Information
+**Endpoint:** `POST /api/devices/:imei/vehicle-info`
+
+**Request Body Example:**
+```json
+{
+  "vin": "WBA4G5C56FG123456",
+  "make": "Toyota",
+  "model": "Corolla",
+  "year": 2009,
+  "plateNumber": "GGE-342-LA"
+}
+```
+**Headers:**
+- `Authorization: Bearer <JWT_TOKEN>`
+
+---
+
+### 4. Confirm Registration
+**Endpoint:** (Handled by backend after vehicle info is submitted)
+- Device status is updated to registered.
+- You can fetch device details with:
+
+```
+GET /api/devices/:imei
+```
+
+---
+
+## Postman Collection (Device Registration)
+
+You can use the following requests in Postman:
+
+1. **Register Device**
+    - POST {{baseUrl}}/api/devices/register
+    - Body: `{ "imei": "{{imei}}", "deviceType": "My car pro" }`
+    - Headers: `Authorization: Bearer {{token}}`
+
+2. **Fetch VIN**
+    - GET {{baseUrl}}/api/devices/{{imei}}/vin
+    - Headers: `Authorization: Bearer {{token}}`
+
+3. **Submit Vehicle Info**
+    - POST {{baseUrl}}/api/devices/{{imei}}/vehicle-info
+    - Body: `{ "vin": "{{vin}}", "make": "Toyota", "model": "Corolla", "year": 2009, "plateNumber": "GGE-342-LA" }`
+    - Headers: `Authorization: Bearer {{token}}`
+
+4. **Get Device Details**
+    - GET {{baseUrl}}/api/devices/{{imei}}
+    - Headers: `Authorization: Bearer {{token}}`
+
+---
+
+Replace `{{baseUrl}}`, `{{imei}}`, `{{token}}`, and `{{vin}}` with your actual values.
+
+For more details, see the API docs at `/api/docs` (Swagger UI). 

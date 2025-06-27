@@ -14,6 +14,7 @@ import realtimeRoutes, { initializeRealTimeRoutes } from './routes/realtimeRoute
 import { RealTimeService } from './services/RealTimeService';
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './config/swagger';
+import geofenceRoutes from './routes/geofenceRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -69,6 +70,7 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/realtime', realtimeRoutes);
+app.use('/api/geofences', geofenceRoutes);
 
 // Real-time status endpoint
 app.get('/api/realtime/status', (req, res) => {

@@ -259,20 +259,17 @@ export class DeviceService {
 
   async getDeviceByImei(imei: string): Promise<ApiResponse> {
     try {
-      const device = await Device.findOne({ imei }).populate("user");
+      const device = await Device.findOne({ imei }).populate('user', '_id');
       if (!device) {
-        throw new CustomError("Device not found", 404);
+        return { success: false, message: 'Device not found', data: null };
       }
-      return {
-        success: true,
-        message: "Device retrieved successfully",
-        data: device,
-      };
+      // Only include user._id in the response
+      const deviceObj = device.toObject();
+      const responseObj: any = { ...deviceObj, userId: (device.user as any)._id.toString() };
+      delete responseObj.user;
+      return { success: true, message: 'Device retrieved successfully', data: responseObj };
     } catch (error) {
-      if (error instanceof CustomError) {
-        throw error;
-      }
-      throw new CustomError("Failed to retrieve device", 500);
+      throw new CustomError('Failed to fetch device', 500);
     }
   }
 
@@ -294,6 +291,27 @@ export class DeviceService {
         throw error;
       }
       throw new CustomError("Failed to retrieve devices", 500);
+    }
+  }
+
+  async updateVehicleInfo(imei: string, vehicleInfo: any): Promise<IDevice | null> {
+    try {
+      const update: any = {};
+      if (vehicleInfo.vin) update.vin = vehicleInfo.vin;
+      if (vehicleInfo.make) update.make = vehicleInfo.make;
+      if (vehicleInfo.model) update.model = vehicleInfo.model;
+      if (vehicleInfo.year) update.modelYear = vehicleInfo.year;
+      if (vehicleInfo.plateNumber) update.plateNumber = vehicleInfo.plateNumber;
+      const device = await Device.findOneAndUpdate(
+        { imei },
+        { $set: update },
+        { new: true }
+      );
+      if (!device) throw new CustomError('Device not found', 404);
+      return device;
+    } catch (error) {
+      if (error instanceof CustomError) throw error;
+      throw new CustomError('Failed to update vehicle info', 500);
     }
   }
 }

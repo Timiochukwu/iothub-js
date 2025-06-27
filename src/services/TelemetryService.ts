@@ -387,6 +387,38 @@ export class TelemetryService {
     }
   }
 
+  async getCarState(imei: string): Promise<{ state: 'on' | 'off'; engineRpm?: number; speed?: number; timestamp?: number }> {
+    try {
+      const latest = await Telemetry.findOne({ imei }).sort({ timestamp: -1 });
+      if (!latest) return { state: 'off' };
+      const isOn = (latest.engineRpm && latest.engineRpm > 0) || (latest.speed && latest.speed > 0);
+      return {
+        state: isOn ? 'on' : 'off',
+        engineRpm: latest.engineRpm,
+        speed: latest.speed,
+        timestamp: latest.timestamp,
+      };
+    } catch (error) {
+      throw new CustomError('Failed to fetch car state', 500);
+    }
+  }
+
+  async getLocationHistory(imei: string, limit = 100): Promise<Array<{ latlng: string; timestamp: number; altitude?: number; angle?: number }>> {
+    try {
+      const telemetries = await Telemetry.find({ imei, latlng: { $exists: true, $ne: null } })
+        .sort({ timestamp: -1 })
+        .limit(limit);
+      return telemetries.map(t => ({
+        latlng: t.latlng!,
+        timestamp: t.timestamp,
+        altitude: t.altitude,
+        angle: t.angle,
+      }));
+    } catch (error) {
+      throw new CustomError('Failed to fetch location history', 500);
+    }
+  }
+
   private mapToTelemetryData(telemetry: ITelemetry): TelemetryData {
     return {
       id: telemetry._id!.toString(),

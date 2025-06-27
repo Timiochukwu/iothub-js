@@ -396,4 +396,45 @@ export class TelemetryController {
       });
     }
   };
+
+  // GET /api/telemetry/car-state?imei=... - Get car state (on/off)
+  getCarState = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { imei } = req.query;
+      if (!imei || typeof imei !== 'string') {
+        res.status(400).json({ success: false, message: 'IMEI parameter is required', error: 'MISSING_IMEI' });
+        return;
+      }
+      const state = await this.telemetryService.getCarState(imei);
+      res.status(200).json({ success: true, data: state });
+    } catch (error) {
+      const customError = error as CustomError;
+      res.status(customError.statusCode || 500).json({
+        success: false,
+        message: customError.message,
+        error: customError.statusCode ? undefined : 'INTERNAL_ERROR'
+      });
+    }
+  };
+
+  // GET /api/telemetry/location-history?imei=...&limit=... - Get location history
+  getLocationHistory = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { imei, limit } = req.query;
+      if (!imei || typeof imei !== 'string') {
+        res.status(400).json({ success: false, message: 'IMEI parameter is required', error: 'MISSING_IMEI' });
+        return;
+      }
+      const lim = limit && typeof limit === 'string' ? parseInt(limit, 10) : 100;
+      const history = await this.telemetryService.getLocationHistory(imei, lim);
+      res.status(200).json({ success: true, data: history });
+    } catch (error) {
+      const customError = error as CustomError;
+      res.status(customError.statusCode || 500).json({
+        success: false,
+        message: customError.message,
+        error: customError.statusCode ? undefined : 'INTERNAL_ERROR'
+      });
+    }
+  };
 }
