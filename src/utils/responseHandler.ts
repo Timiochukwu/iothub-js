@@ -108,8 +108,20 @@ export class ImprovedGeofenceController {
   // Use the imported Request and Response types here
   getGeofence = async (req: Request, res: Response): Promise<void> => {
     try {
-      // req.params is now correctly typed
       const { id } = req.params;
+
+      // --- FIX: ADD A GUARD CLAUSE TO HANDLE THE UNDEFINED CASE ---
+      if (!id) {
+        // Use your ResponseHandler to send a clear validation error.
+        ResponseHandler.validationError(
+          res,
+          "Geofence ID is required in the URL path."
+        );
+        return;
+      }
+
+      // Now that we are past the guard clause, TypeScript knows that 'id'
+      // must be a string, and the error is resolved.
       const geofence = await this.geofenceService.getGeofenceById(id);
 
       if (!geofence) {
@@ -117,7 +129,6 @@ export class ImprovedGeofenceController {
         return;
       }
 
-      // FIX: The argument for `success` should be the geofence data, not a string
       ResponseHandler.success(res, geofence);
     } catch (error) {
       ResponseHandler.error(res, error);
