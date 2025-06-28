@@ -57,8 +57,10 @@ if (process.env.NODE_ENV === "development") {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-app.use(
-  "/",
+const clientRouter = express.Router();
+
+// Apply a relaxed CSP specifically for the client.
+clientRouter.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
@@ -74,22 +76,28 @@ app.use(
   })
 );
 
-// Serve static files from the "public" directory in your build output (dist/public)
-// This lets the browser request other files like CSS or JS if you add them.
-app.use(express.static(path.join(__dirname, "public")));
+// Serve the static files from the build output's 'public' directory.
+clientRouter.use(express.static(path.join(__dirname, "public")));
 
-// Explicitly define the handler for the root path AFTER the static middleware.
-app.get("/", (req, res) => {
-  // IMPORTANT: The path should be relative to where the script is running (dist folder).
-  // Don't use "src/public" in production.
+// Explicitly handle the GET request for the root to serve index.html.
+clientRouter.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Swagger API docs
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// Mount the entire client-serving logic on the root path.
+app.use("/", clientRouter);
 
-// Health check endpoint
-app.get("/health", (req, res) => {
+// --- 3. API Routes (with their OWN strict security policy) ---
+// We create another router to group all API-related logic.
+
+const apiRouter = express.Router();
+
+// Apply the strict, default helmet policy ONLY to API routes.
+apiRouter.use(helmet());
+
+// Define all your API endpoints on this router.
+apiRouter.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+apiRouter.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
     timestamp: new Date().toISOString(),
@@ -98,17 +106,7 @@ app.get("/health", (req, res) => {
     connectedUsers: realTimeService.getConnectedUsers().length,
   });
 });
-
-// API routes
-app.use("/api/auth", authRoutes);
-app.use("/api/devices", deviceRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/telemetry", telemetryRoutes);
-app.use("/api/realtime", realtimeRoutes);
-app.use("/api/geofences", geofenceRoutes);
-
-// Real-time status endpoint
-app.get("/api/realtime/status", (req, res) => {
+apiRouter.get("/realtime/status", (req, res) => {
   res.json({
     connectedDevices: realTimeService.getConnectedDevices(),
     connectedUsers: realTimeService.getConnectedUsers(),
@@ -118,15 +116,22 @@ app.get("/api/realtime/status", (req, res) => {
   });
 });
 
-// Serve static files from the "public" directory
+apiRouter.use("/auth", authRoutes);
+apiRouter.use("/devices", deviceRoutes);
+apiRouter.use("/users", userRoutes);
+apiRouter.use("/telemetry", telemetryRoutes);
+apiRouter.use("/realtime", realtimeRoutes);
+apiRouter.use("/geofences", geofenceRoutes);
 
-// 404 handler
+// Mount the entire API logic on the '/api' path.
+app.use("/api", apiRouter);
+
+// --- 4. Error Handlers at the VERY END ---
+// These will catch any requests that didn't match the client or API routers.
 app.use(notFoundHandler);
-
-// Global error handler
 app.use(errorHandler);
 
-// Cleanup disconnected devices every 5 minutes
+// --- 5. Server Startup Logic ---
 setInterval(
   () => {
     realTimeService.cleanupDisconnectedDevices();
