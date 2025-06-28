@@ -164,10 +164,17 @@ export interface TelemetryPayload {
   };
 }
 
+// In src/types/index.ts
+
 export interface CreateGeofenceRequest {
   name: string;
   description?: string;
-  coordinates: {
+  type: "circle" | "polygon"; // <-- ADD THIS LINE
+  // Also add properties for circle type
+  center?: { lat: number; lng: number };
+  radius?: number;
+  // Keep polygon coordinates
+  coordinates?: {
     type: "Polygon";
     coordinates: number[][][];
   };
