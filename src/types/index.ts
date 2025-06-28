@@ -169,15 +169,15 @@ export interface TelemetryPayload {
 export interface CreateGeofenceRequest {
   name: string;
   description?: string;
-  type: "circle" | "polygon"; // <-- ADD THIS LINE
-  // Also add properties for circle type
+  type: "circle" | "polygon";
+
+  // For 'circle' type
   center?: { lat: number; lng: number };
   radius?: number;
-  // Keep polygon coordinates
-  coordinates?: {
-    type: "Polygon";
-    coordinates: number[][][];
-  };
+
+  // --- FIX #2: HARMONIZE THE COORDINATES TYPE ---
+  // The service expects an array of points, not a GeoJSON object.
+  coordinates?: { lat: number; lng: number }[];
 }
 
 // Telemetry DTOs (matching Java implementation)

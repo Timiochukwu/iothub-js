@@ -1,5 +1,5 @@
 // src/utils/responseHandler.ts
-import { Response } from "express";
+import { Request, Response } from "express";
 import { CustomError } from "../middleware/errorHandler";
 import { ApiResponse } from "../types";
 // import geofence
