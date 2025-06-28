@@ -164,8 +164,7 @@ export interface TelemetryPayload {
   };
 }
 
-
-export CreateGeofenceRequest {
+export interface CreateGeofenceRequest {
   name: string;
   description?: string;
   coordinates: {
