@@ -1,450 +1,315 @@
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import { Server as HTTPServer } from 'http';
-import { TelemetryService } from './TelemetryService';
-import { Device } from '../models/Device';
-import { 
-  RealTimeTelemetryEvent, 
-  WebSocketMessage, 
+import { Server as SocketIOServer, Socket } from "socket.io";
+import { Server as HTTPServer } from "http";
+import { TelemetryService } from "./TelemetryService";
+import { Device } from "../models/Device";
+import {
   DeviceConnection,
   TelemetryData,
-  TelemetryPayload
-} from '../types';
-import { CustomError } from '../middleware/errorHandler';
-import { Geofence } from '../models/Geofence';
-import { GeofenceEvent } from '../models/GeofenceEvent';
+  TelemetryPayload,
+  RealTimeTelemetryEvent,
+  ApiResponse,
+} from "../types";
+import { CustomError } from "../middleware/errorHandler";
 
 export class RealTimeService {
   private io: SocketIOServer;
   private telemetryService: TelemetryService;
-  private deviceConnections: Map<string, DeviceConnection> = new Map();
-  private userRooms: Map<string, Set<string>> = new Map(); // email -> Set<socketId>
+  // In-memory maps to track live connections.
+  private deviceConnections: Map<string, DeviceConnection> = new Map(); // Key: imei
+  // NEW: Maps an IMEI to a set of sockets that are WATCHING it.
+  private imeiWatchers: Map<string, Set<string>> = new Map(); // Key: imei, Value: Set of socketIds
+  private userSockets: Map<string, Set<string>> = new Map(); // Key: user email, Value: Set of socketIds
 
   constructor(httpServer: HTTPServer) {
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:3000",
-        methods: ["GET", "POST"]
-      }
+        origin: [
+          process.env.FRONTEND_URL || "http://localhost:3000",
+          "http://localhost:6162",
+        ],
+        methods: ["GET", "POST"],
+      },
     });
+
     this.telemetryService = new TelemetryService();
     this.setupSocketHandlers();
+    console.log("✅ RealTimeService initialized with Socket.IO server.");
   }
 
-  private setupSocketHandlers() {
-    this.io.on('connection', (socket: Socket) => {
-      console.log(`🔌 Client connected: ${socket.id}`);
+  private setupSocketHandlers(): void {
+    this.io.on("connection", (socket: Socket) => {
+      console.log(`[Connection] 🔌 New client connected: ${socket.id}`);
 
-      // Handle device registration
-      socket.on('register_device', async (data: { imei: string; userEmail?: string }) => {
-        try {
-          console.log('🔍 Attempting to register device:', data);
-          await this.registerDevice(socket, data.imei, data.userEmail);
-        } catch (error) {
-          console.error('❌ Device registration error:', error);
-          socket.emit('error', { 
-            message: 'Failed to register device',
-            details: error instanceof Error ? error.message : 'Unknown error'
-          });
-        }
-      });
+      const { imei } = socket.handshake.auth;
+      if (imei && typeof imei === "string") {
+        this.handleDeviceAutoRegistration(socket, imei);
+      } else {
+        console.log(
+          `[Connection] 👤 Client ${socket.id} is a watcher/browser. Waiting for events.`
+        );
+      }
 
-    
-
-      socket.on('telemetry_data', async (payload: TelemetryPayload) => {
-        try {
-          // Validate payload structure
-          if (!this.validateTelemetryPayload(payload)) {
-            socket.emit('error', { 
-              code: 'INVALID_PAYLOAD', 
-              message: 'Invalid telemetry payload structure' 
-            });
-            return;
-          }
-          
-          await this.processRealTimeTelemetry(socket, payload);
-        } catch (error) {
-          console.error(`Telemetry processing error for ${payload.imei}:`, error);
-          socket.emit('error', { 
-            code: 'PROCESSING_ERROR',
-            message: 'Failed to process telemetry data',
-            details: error instanceof CustomError ? error.message : 'Internal error'
-          });
-        }
-      });
-
-      
-
-      // Handle heartbeat
-      socket.on('heartbeat', (data: { imei: string }) => {
-        this.updateHeartbeat(data.imei, socket.id);
-      });
-
-      // Handle user subscription
-      socket.on('subscribe_user', async (data: { email: string }) => {
-        try {
-          console.log('🔍 Attempting to subscribe user:', data);
-          await this.subscribeUser(socket, data.email);
-        } catch (error) {
-          console.error('❌ User subscription error:', error);
-          socket.emit('error', { 
-            message: 'Failed to subscribe user',
-            details: error instanceof Error ? error.message : 'Unknown error'
-          });
-        }
-      });
-
-      // Handle disconnection
-      socket.on('disconnect', () => {
-        this.handleDisconnection(socket);
-      });
+      // --- Event Listeners for this specific socket ---
+      socket.on("subscribe_to_device", (data) =>
+        this.handleSubscribeToDevice(socket, data)
+      );
+      socket.on("get_real_time_telemetry", (data) =>
+        this.handleGetRealTimeTelemetry(socket, data)
+      );
+      socket.on("telemetry_data", (payload) =>
+        this.handleTelemetryData(socket, payload)
+      );
+      socket.on("disconnect", (reason) =>
+        this.handleDisconnection(socket, reason)
+      );
     });
   }
 
-  private validateTelemetryPayload(payload: TelemetryPayload): boolean {
-    return !!(
-      payload &&
-      payload.imei &&
-      payload.payload &&
-      payload.payload.state &&
-      payload.payload.state.reported
+  private handleDeviceAutoRegistration(socket: Socket, imei: string): void {
+    console.log(
+      `[Auth] 🤝 Handshake received. Attempting to auto-register device with IMEI: ${imei}`
     );
+    (async () => {
+      try {
+        await this.registerDevice(socket, imei);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Authentication failed";
+        console.error(
+          `[Auth] ❌ Auto-registration failed for IMEI ${imei}: ${errorMessage}`
+        );
+        socket.emit("error", {
+          message: "Registration failed",
+          details: errorMessage,
+        });
+        socket.disconnect(true);
+      }
+    })();
   }
 
-  private async registerDevice(socket: Socket, imei: string, userEmail?: string) {
-    console.log('🔍 Looking for device with IMEI:', imei);
-    
+  private async registerDevice(socket: Socket, imei: string): Promise<void> {
+    console.log(`[Register] 📝 Starting registration for IMEI: ${imei}`);
+
+    const device = await Device.findOne({ imei });
+    if (!device) {
+      throw new CustomError(
+        `Device with IMEI ${imei} not found in database`,
+        404
+      );
+    }
+
+    const connection: DeviceConnection = {
+      socketId: socket.id,
+      imei,
+      lastHeartbeat: Date.now(),
+      connectedAt: Date.now(),
+    };
+
+    this.deviceConnections.set(imei, connection);
+    socket.join(`device:${imei}`); // A room just for this device
+    console.log(`[Register] ✅ SUCCESS: Device ${imei} is now connected.`);
+    socket.emit("device_registered", {
+      message: `Device ${imei} registered successfully.`,
+    });
+  }
+
+  private async handleGetRealTimeTelemetry(
+    socket: Socket,
+    data: any
+  ): Promise<void> {
     try {
-      // Test database connection
-      const device = await Device.findOne({ imei });
-      console.log('🔍 Device query result:', device ? 'Found' : 'Not found');
-      
-      if (!device) {
-        console.log('❌ Device not found in database');
-        throw new CustomError('Device not found', 404);
+      const { imei } = data;
+      if (!imei) {
+        throw new CustomError("IMEI is required to fetch telemetry.", 400);
       }
-      
-      console.log('✅ Device found:', { imei: device.imei, user: device.user });
-      
-      // Rest of your existing code...
-    } catch (dbError) {
-      console.error('❌ Database error:', dbError);
-      throw dbError;
+
+      if (!this.deviceConnections.has(imei)) {
+        throw new CustomError("Device is not currently connected.", 404);
+      }
+
+      console.log(
+        `[Telemetry Fetch] 🙋 Watcher ${socket.id} requesting data for device ${imei}.`
+      );
+
+      const telemetryData =
+        await this.telemetryService.getDeviceLatestTelemetry(imei);
+      if (!telemetryData) {
+        throw new CustomError(
+          "No telemetry data available for this device yet.",
+          404
+        );
+      }
+
+      console.log(
+        `[Telemetry Fetch] 📡 Fetched latest telemetry for ${imei}:`,
+        telemetryData
+      );
+
+      socket.emit("real_time_telemetry", { imei, data: telemetryData });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to get telemetry";
+      console.error(`[Telemetry Fetch] ❌ Error: ${errorMessage}`);
+      socket.emit("error", {
+        message: "Failed to get real-time telemetry",
+        details: errorMessage,
+      });
     }
   }
 
-  private async processRealTimeTelemetry(socket: Socket, payload: TelemetryPayload) {
+  private async handleTelemetryData(
+    socket: Socket,
+    payload: TelemetryPayload
+  ): Promise<void> {
     const { imei } = payload;
-  
-  try {
-    console.log('🔄 Processing telemetry for IMEI:', imei);
-    
-    // Store in database
-    console.log('💾 Storing in database...');
-    const result = await this.telemetryService.ingestTelemetry(payload);
-    console.log('✅ Database storage completed:', result);
-    
-    // Get processed telemetry data
-    console.log('📊 Fetching latest telemetry...');
-    const telemetryData = await this.telemetryService.getLatestTelemetry();
-    console.log('✅ Latest telemetry fetched:', telemetryData ? 'Found' : 'Not found');
-    
-    if (telemetryData) {
-      // Create real-time event
+    if (!imei || !this.deviceConnections.has(imei)) {
+      console.warn(
+        `[Telemetry Ingest] ⚠️ Received data from unregistered/stale device: ${imei}.`
+      );
+      socket.disconnect(true);
+      return;
+    }
+
+    try {
+      const ingestResult: ApiResponse<TelemetryData> =
+        await this.telemetryService.ingestTelemetry(payload);
+      const telemetryData = ingestResult.data;
+      if (!telemetryData) throw new Error("Ingested data is invalid.");
+
       const event: RealTimeTelemetryEvent = {
-        type: 'telemetry_update',
+        type: "telemetry_update",
         imei,
         timestamp: Date.now(),
-        data: telemetryData
+        data: telemetryData,
       };
 
-      // Check for alerts
-      const alert = this.checkForAlerts(telemetryData);
-      if (alert) {
-        event.type = alert.type as any;
-        event.alert = alert;
-      }
+      // Broadcast the update to the room of watchers for this specific IMEI
+      const watchRoom = `watch:${imei}`;
+      this.io.to(watchRoom).emit("telemetry_update", event);
 
-      // Broadcast to device room
-      this.io.to(`device:${imei}`).emit('telemetry_update', event);
-
-      // Broadcast to user room
-      const connection = this.deviceConnections.get(imei);
-      if (connection?.userEmail) {
-        this.io.to(`user:${connection.userEmail}`).emit('telemetry_update', event);
-      }
-
-      // Broadcast to all connected clients (for dashboard)
-      this.io.emit('telemetry_broadcast', event);
-
-      // --- Real-time car state event ---
-      const carState = (telemetryData.engineRpm && telemetryData.engineRpm > 0) || (telemetryData.speed && telemetryData.speed > 0) ? 'on' : 'off';
-      const carStatePayload = {
-        imei,
-        state: carState,
-        engineRpm: telemetryData.engineRpm,
-        speed: telemetryData.speed,
-        timestamp: telemetryData.timestamp
-      };
-      this.io.to(`device:${imei}`).emit('car_state_changed', carStatePayload);
-      if (connection?.userEmail) {
-        this.io.to(`user:${connection.userEmail}`).emit('car_state_changed', carStatePayload);
-      }
-
-      // --- Real-time location event ---
-      if (telemetryData.latlng) {
-        const locationPayload = {
-          imei,
-          latlng: telemetryData.latlng,
-          timestamp: telemetryData.timestamp,
-          altitude: telemetryData.altitude,
-          angle: telemetryData.angle
-        };
-        this.io.to(`device:${imei}`).emit('location_changed', locationPayload);
-        if (connection?.userEmail) {
-          this.io.to(`user:${connection.userEmail}`).emit('location_changed', locationPayload);
-        }
-      }
-
-      // --- Geofence entry/exit detection ---
-      if (telemetryData && telemetryData.latlng) {
-        const [latStr, lngStr] = telemetryData.latlng.split(',');
-        if (typeof latStr === 'string' && typeof lngStr === 'string') {
-          const lat = parseFloat(latStr);
-          const lng = parseFloat(lngStr);
-          if (!isNaN(lat) && !isNaN(lng)) {
-            const geofences = await Geofence.find({ $or: [
-              { deviceImei: imei },
-              { userEmail: connection?.userEmail },
-              { deviceImei: { $exists: false } },
-              { userEmail: { $exists: false } }
-            ] });
-            for (const geofence of geofences) {
-              if (!geofence._id) continue; // skip if _id is null
-              let inside = false;
-              if (geofence.type === 'circle' && geofence.center && geofence.radius) {
-                inside = haversineDistance(lat, lng, geofence.center.lat, geofence.center.lng) <= geofence.radius;
-              } else if (geofence.type === 'polygon' && geofence.coordinates) {
-                inside = pointInPolygon({ lat, lng }, geofence.coordinates);
-              }
-              const geofenceId = typeof geofence._id === 'object' && 'toString' in geofence._id
-                ? geofence._id.toString()
-                : String(geofence._id);
-              const deviceState = lastGeofenceState[imei] = lastGeofenceState[imei] || {};
-              const prevInside = deviceState[geofenceId] || false;
-              if (inside !== prevInside) {
-                // State changed: entry or exit
-                const eventType = inside ? 'entry' : 'exit';
-                // Store event
-                await GeofenceEvent.create({
-                  imei,
-                  geofenceId: geofence._id,
-                  type: eventType,
-                  timestamp: telemetryData.timestamp,
-                  latlng: telemetryData.latlng,
-                  altitude: telemetryData.altitude,
-                  angle: telemetryData.angle
-                });
-                // Emit event
-                const geofenceEventPayload = {
-                  imei,
-                  geofenceId: geofence._id,
-                  type: eventType,
-                  timestamp: telemetryData.timestamp,
-                  latlng: telemetryData.latlng,
-                  altitude: telemetryData.altitude,
-                  angle: telemetryData.angle
-                };
-                this.io.to(`device:${imei}`).emit('geofence_' + eventType, geofenceEventPayload);
-                if (connection?.userEmail) {
-                  this.io.to(`user:${connection.userEmail}`).emit('geofence_' + eventType, geofenceEventPayload);
-                }
-              }
-              deviceState[geofenceId] = inside;
-            }
-          }
-        }
-      }
-
-      console.log(`📊 Real-time telemetry: ${imei} - ${event.type}`);
+      console.log(
+        `[Telemetry Ingest] 📡 Relayed telemetry for ${imei} to room '${watchRoom}'.`
+      );
+    } catch (error) {
+      console.error(
+        `[Telemetry Ingest] ❌ Error processing telemetry for ${imei}:`,
+        error
+      );
     }
-
-    socket.emit('telemetry_processed', result);
-  } catch (error) {
-    console.error('❌ Error in processRealTimeTelemetry:', error);
-    throw error; // Re-throw to be caught by caller
   }
-}
 
-  private checkForAlerts(telemetryData: TelemetryData): any {
-    const alerts = [];
+  private handleSubscribeToDevice(socket: Socket, data: any): void {
+    try {
+      const { imei } = data;
+      if (!imei)
+        throw new CustomError("IMEI is required for subscription.", 400);
 
-    // Battery alert
-    if (telemetryData.externalVoltage && telemetryData.externalVoltage * 0.001 < 12.0) {
-      alerts.push({
-        type: 'vehicle_alert',
-        level: 'warning',
-        message: 'Low battery voltage detected',
-        code: 'LOW_BATTERY'
+      const watchRoom = `watch:${imei}`;
+      socket.join(watchRoom);
+
+      if (!this.imeiWatchers.has(imei)) {
+        this.imeiWatchers.set(imei, new Set());
+      }
+      this.imeiWatchers.get(imei)!.add(socket.id);
+
+      console.log(
+        `[Subscribe] 👤 Watcher ${socket.id} is now monitoring device ${imei} in room '${watchRoom}'.`
+      );
+      socket.emit("device_subscribed", {
+        message: `Successfully subscribed to updates for IMEI ${imei}.`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Subscription failed";
+      console.error(
+        `[Subscribe] ❌ Error for watcher subscription: ${errorMessage}`
+      );
+      socket.emit("error", {
+        message: "Failed to subscribe to device",
+        details: errorMessage,
       });
     }
-
-    // Crash detection alert
-    if (telemetryData.crashDetection && telemetryData.crashDetection > 0) {
-      alerts.push({
-        type: 'crash_detected',
-        level: 'critical',
-        message: 'Crash detected!',
-        code: 'CRASH_DETECTED'
-      });
-    }
-
-    // Engine RPM alert
-    if (telemetryData.engineRpm && telemetryData.engineRpm > 4000) {
-      alerts.push({
-        type: 'vehicle_alert',
-        level: 'warning',
-        message: 'High engine RPM detected',
-        code: 'HIGH_RPM'
-      });
-    }
-
-    // DTC alert
-    if (telemetryData.dtc && telemetryData.dtc > 0) {
-      alerts.push({
-        type: 'health_warning',
-        level: 'warning',
-        message: 'Diagnostic trouble code detected',
-        code: 'DTC_DETECTED'
-      });
-    }
-
-    return alerts.length > 0 ? alerts[0] : null;
   }
 
-  private async subscribeUser(socket: Socket, email: string) {
-    // Verify user has devices
-    const devices = await Device.find({ user: email });
-    if (devices.length === 0) {
-      throw new CustomError('No devices found for user', 404);
+  private handleDisconnection(socket: Socket, reason: string): void {
+    console.log(
+      `[Connection] 🔌 Client disconnected: ${socket.id}. Reason: ${reason}`
+    );
+
+    // Check if the disconnected socket was a registered device
+    const deviceEntry = Array.from(this.deviceConnections.entries()).find(
+      ([, conn]) => conn.socketId === socket.id
+    );
+    if (deviceEntry) {
+      this.deviceConnections.delete(deviceEntry[0]);
+      console.log(
+        `[Connection] 📱 Device ${deviceEntry[0]} connection removed.`
+      );
     }
 
-    // Join user room
-    socket.join(`user:${email}`);
-    this.addUserToRoom(email, socket.id);
-
-    // Send current telemetry for all user devices
-    const telemetries = await this.telemetryService.getTelemetryForUser(email);
-    socket.emit('user_subscribed', { 
-      email, 
-      deviceCount: devices.length,
-      telemetries 
-    });
-
-    console.log(`👤 User subscribed: ${email} (${socket.id})`);
-  }
-
-  private addUserToRoom(email: string, socketId: string) {
-    if (!this.userRooms.has(email)) {
-      this.userRooms.set(email, new Set());
-    }
-    this.userRooms.get(email)!.add(socketId);
-  }
-
-  private updateHeartbeat(imei: string, socketId: string) {
-    const connection = this.deviceConnections.get(imei);
-    if (connection && connection.socketId === socketId) {
-      connection.lastHeartbeat = Date.now();
-      this.deviceConnections.set(imei, connection);
-    }
-  }
-
-  private handleDisconnection(socket: Socket) {
-    // Remove from device connections
-    for (const [imei, connection] of this.deviceConnections.entries()) {
-      if (connection.socketId === socket.id) {
-        this.deviceConnections.delete(imei);
-        console.log(`📱 Device disconnected: ${imei}`);
-        break;
-      }
-    }
-
-    // Remove from user rooms
-    for (const [email, socketIds] of this.userRooms.entries()) {
+    // Check if the disconnected socket was a watcher and remove it from all watch lists
+    this.imeiWatchers.forEach((socketIds, imei) => {
       if (socketIds.has(socket.id)) {
         socketIds.delete(socket.id);
+        console.log(
+          `[Connection] 👤 Watcher ${socket.id} unsubscribed from ${imei}.`
+        );
         if (socketIds.size === 0) {
-          this.userRooms.delete(email);
+          this.imeiWatchers.delete(imei);
+          console.log(
+            `[Connection] ოთახი ${imei} has no more watchers. Room removed.`
+          );
         }
-        console.log(`👤 User disconnected: ${email}`);
-        break;
       }
-    }
-
-    console.log(`🔌 Client disconnected: ${socket.id}`);
+    });
   }
 
-  // Public methods for external use
-  public getConnectedDevices(): DeviceConnection[] {
-    return Array.from(this.deviceConnections.values());
+  // --- Public Methods for External Use (e.g., from index.ts or controllers) ---
+  public getConnectedDevices(): string[] {
+    return Array.from(this.deviceConnections.keys());
   }
 
   public getConnectedUsers(): string[] {
-    return Array.from(this.userRooms.keys());
+    return Array.from(this.userSockets.keys());
   }
 
-  public broadcastToDevice(imei: string, event: string, data: any) {
-    this.io.to(`device:${imei}`).emit(event, data);
-  }
-
-  public broadcastToUser(email: string, event: string, data: any) {
-    this.io.to(`user:${email}`).emit(event, data);
-  }
-
-  public broadcastToAll(event: string, data: any) {
-    this.io.emit(event, data);
-  }
-
-  // Cleanup disconnected devices (run periodically)
-  public cleanupDisconnectedDevices() {
+  public cleanupDisconnectedDevices(): void {
     const now = Date.now();
-    const timeout = 5 * 60 * 1000; // 5 minutes
+    const timeout = 5 * 60 * 1000;
 
     for (const [imei, connection] of this.deviceConnections.entries()) {
       if (now - connection.lastHeartbeat > timeout) {
-        this.deviceConnections.delete(imei);
-        console.log(`🧹 Cleaned up disconnected device: ${imei}`);
+        const socket = this.io.sockets.sockets.get(connection.socketId);
+        if (socket) {
+          socket.disconnect(true);
+        } else {
+          this.deviceConnections.delete(imei);
+        }
+        console.log(
+          `[Cleanup] 🧹 Stale device connection for ${imei} removed due to inactivity.`
+        );
       }
     }
   }
-}
 
-// Helper functions for geofence checks
-function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const R = 6371000; // meters
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function pointInPolygon(point: { lat: number; lng: number }, polygon: Array<{ lat: number; lng: number }>) {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const pi = polygon[i];
-    const pj = polygon[j];
-    if (!pi || !pj || pi.lat == null || pi.lng == null || pj.lat == null || pj.lng == null) continue;
-    const xi = pi.lat, yi = pi.lng;
-    const xj = pj.lat, yj = pj.lng;
-    const intersect = ((yi > point.lng) !== (yj > point.lng)) &&
-      (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi + 0.0000001) + xi);
-    if (intersect) inside = !inside;
+  public broadcastToAll(event: string, data: any): void {
+    console.log(`[Broadcast] 📢 Broadcasting event '${event}' to ALL clients.`);
+    this.io.emit(event, data);
   }
-  return inside;
-}
 
-// In-memory cache for last geofence state per device/geofence
-const lastGeofenceState: Record<string, Record<string, boolean>> = {}; 
+  public broadcastToDevice(imei: string, event: string, data: any): void {
+    const room = `device:${imei}`;
+    console.log(
+      `[Broadcast] 📱 Broadcasting event '${event}' to room '${room}'.`
+    );
+    this.io.to(room).emit(event, data);
+  }
+
+  public broadcastToUser(email: string, event: string, data: any): void {
+    const room = `user:${email}`;
+    console.log(
+      `[Broadcast] 👤 Broadcasting event '${event}' to room '${room}'.`
+    );
+    this.io.to(room).emit(event, data);
+  }
+}

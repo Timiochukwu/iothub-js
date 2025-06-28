@@ -18,6 +18,10 @@ import {
   VehicleHealthDTO,
   ApiResponse,
 } from "../types";
+
+import { TelemetryDTO } from "../types/TelemetryDTO";
+
+import { mapTelemetry } from "../utils/mapTelemetry";
 import { CustomError } from "../middleware/errorHandler";
 
 export class TelemetryService {
@@ -75,6 +79,16 @@ export class TelemetryService {
       return latest ? this.mapToTelemetryData(latest) : null;
     } catch (error) {
       throw new CustomError("Failed to fetch latest telemetry", 500);
+    }
+  }
+
+  async getDeviceLatestTelemetry(imei: string): Promise<TelemetryData | null> {
+    try {
+      const latest = await Telemetry.findOne({ imei }).sort({ timestamp: -1 });
+
+      return latest ? this.mapToTelemetryData(latest) : null;
+    } catch (error) {
+      throw new CustomError("Failed to fetch latest telemetry for device", 500);
     }
   }
 
@@ -387,60 +401,78 @@ export class TelemetryService {
     }
   }
 
-  async getCarState(imei: string): Promise<{ state: 'on' | 'off'; engineRpm?: number; speed?: number; timestamp?: number }> {
+  async getCarState(imei: string): Promise<{
+    state: "on" | "off";
+    engineRpm?: number;
+    speed?: number;
+    timestamp?: number;
+  }> {
     try {
       const latest = await Telemetry.findOne({ imei }).sort({ timestamp: -1 });
-      if (!latest) return { state: 'off' };
-      const isOn = (latest.engineRpm && latest.engineRpm > 0) || (latest.speed && latest.speed > 0);
+      if (!latest) return { state: "off" };
+      const isOn =
+        (latest.engineRpm && latest.engineRpm > 0) ||
+        (latest.speed && latest.speed > 0);
       return {
-        state: isOn ? 'on' : 'off',
+        state: isOn ? "on" : "off",
         engineRpm: latest.engineRpm,
         speed: latest.speed,
         timestamp: latest.timestamp,
       };
     } catch (error) {
-      throw new CustomError('Failed to fetch car state', 500);
+      throw new CustomError("Failed to fetch car state", 500);
     }
   }
 
-  async getLocationHistory(imei: string, limit = 100): Promise<Array<{ latlng: string; timestamp: number; altitude?: number; angle?: number }>> {
+  async getLocationHistory(
+    imei: string,
+    limit = 100
+  ): Promise<
+    Array<{
+      latlng: string;
+      timestamp: number;
+      altitude?: number;
+      angle?: number;
+    }>
+  > {
     try {
-      const telemetries = await Telemetry.find({ imei, latlng: { $exists: true, $ne: null } })
+      const telemetries = await Telemetry.find({
+        imei,
+        latlng: { $exists: true, $ne: null },
+      })
         .sort({ timestamp: -1 })
         .limit(limit);
-      return telemetries.map(t => ({
+      return telemetries.map((t) => ({
         latlng: t.latlng!,
         timestamp: t.timestamp,
         altitude: t.altitude,
         angle: t.angle,
       }));
     } catch (error) {
-      throw new CustomError('Failed to fetch location history', 500);
+      throw new CustomError("Failed to fetch location history", 500);
     }
   }
 
   private mapToTelemetryData(telemetry: ITelemetry): TelemetryData {
-    return {
-      id: telemetry._id!.toString(),
-      imei: telemetry.imei,
-      timestamp: telemetry.timestamp,
-      tirePressure: telemetry.tirePressure,
-      speed: telemetry.speed,
-      latlng: telemetry.latlng,
-      altitude: telemetry.altitude,
-      angle: telemetry.angle,
-      satellites: telemetry.satellites,
-      event: telemetry.event,
-      battery: telemetry.battery,
-      fuelLevel: telemetry.fuelLevel,
-      engineRpm: telemetry.engineRpm,
-      engineOilTemp: telemetry.engineOilTemp,
-      crashDetection: telemetry.crashDetection,
-      engineLoad: telemetry.engineLoad,
-      dtc: telemetry.dtc,
-      externalVoltage: telemetry.externalVoltage,
-      totalMileage: telemetry.totalMileage,
-    };
+    // console.log("Mapping telemetry data:", telemetry);
+
+    // Step 1: Use the generic utility to get a flexible DTO
+    const telemetryDto: TelemetryDTO = mapTelemetry(telemetry);
+
+    // console.log("Mapped telemetry DTO:", telemetryDto);
+
+    // Step 2: Validate the DTO to ensure it meets the stricter TelemetryData contract
+    if (!telemetryDto.imei) {
+      throw new Error(
+        `Data integrity error: Telemetry record ${telemetry._id} is missing an IMEI.`
+      );
+    }
+    if (telemetryDto.id === undefined) {
+      telemetryDto.id = telemetry._id.toString();
+    }
+
+    // Step 3: Now that we've validated it, we can safely cast and return it as TelemetryData
+    return telemetryDto as TelemetryData;
   }
 
   private toNumberSafe(value: any): number | undefined {

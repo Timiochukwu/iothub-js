@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Socket.IO Test Client (IMEI-Centric)</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        background-color: #1a1a1a;
+        color: #f0f0f0;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        box-sizing: border-box;
+      }
+      h1,
+      h2,
+      h3 {
+        color: #00aaff;
+        border-bottom: 2px solid #444;
+        padding-bottom: 10px;
+      }
+      .container {
+        display: flex;
+        gap: 20px;
+        flex-grow: 1;
+        min-height: 0;
+      }
+      .controls {
+        flex: 0 0 400px;
+        padding: 15px;
+        background-color: #2a2a2a;
+        border-radius: 8px;
+        border: 1px solid #444;
+        overflow-y: auto;
+      }
+      #logs {
+        flex-grow: 1;
+        background-color: #222;
+        border: 1px solid #444;
+        padding: 15px;
+        border-radius: 8px;
+        overflow-y: auto;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 0.9em;
+        white-space: pre-wrap;
+      }
+      .log {
+        padding: 8px;
+        margin-bottom: 8px;
+        border-left: 4px solid;
+        border-radius: 4px;
+      }
+      .log.system {
+        border-color: #888;
+        background-color: #333;
+      }
+      .log.device {
+        border-color: #00aaff;
+        background-color: #2a3a4a;
+      }
+      .log.watcher {
+        border-color: #00ff88;
+        background-color: #2a4a3a;
+      }
+      .log.poll {
+        border-color: #ffaa00;
+        background-color: #4a4a2a;
+      }
+      .log.error {
+        border-color: #ff4444;
+        background-color: #4a2a2a;
+        color: #ffcccc;
+        font-weight: bold;
+      }
+      .log pre {
+        margin-top: 5px;
+        padding: 8px;
+        background-color: #111;
+        border-radius: 4px;
+      }
+      .input-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        color: #ccc;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        background-color: #333;
+        border: 1px solid #555;
+        color: #f0f0f0;
+        border-radius: 4px;
+      }
+      button {
+        padding: 10px 15px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+        margin-top: 5px;
+        background-color: #0077cc;
+        color: white;
+      }
+      button:disabled {
+        background-color: #555;
+        cursor: not-allowed;
+      }
+      .status {
+        font-weight: bold;
+      }
+      .status.connected {
+        color: #00ff88;
+      }
+      .status.disconnected {
+        color: #ff4444;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Socket.IO Backend Test Client</h1>
+    <div class="container">
+      <div class="controls">
+        <h2>Controls</h2>
+        <div class="input-group">
+          <label for="serverUrl">Server URL</label>
+          <input type="text" id="serverUrl" value="http://localhost:6162" />
+        </div>
+        <div class="input-group">
+          <label for="imei">Device IMEI</label>
+          <input type="text" id="imei" value="864636069379085" />
+        </div>
+        <hr />
+        <h3>Device Actions</h3>
+        <p>Connect a physical device client.</p>
+        <button id="connectDeviceBtn">Connect as Device</button>
+        <button id="disconnectDeviceBtn" disabled>Disconnect</button>
+        <p>
+          Status:
+          <span id="deviceStatus" class="status disconnected"
+            >DISCONNECTED</span
+          >
+        </p>
+
+        <hr />
+        <h3>Device Monitor Actions</h3>
+        <p>Connect a browser to watch a device.</p>
+        <button id="connectWatcherBtn">Watch Device</button>
+        <button id="disconnectWatcherBtn" disabled>Stop Watching</button>
+        <p>
+          Status:
+          <span id="watcherStatus" class="status disconnected"
+            >DISCONNECTED</span
+          >
+        </p>
+
+        <div class="input-group">
+          <label for="pollingInterval">Polling Interval (ms)</label>
+          <input type="number" id="pollingInterval" value="5000" />
+        </div>
+        <button id="togglePollingBtn" disabled>Start Polling</button>
+      </div>
+
+      <div class="logs-container">
+        <h2>Live Logs</h2>
+        <div id="logs"></div>
+      </div>
+    </div>
+
+    <script>
+      const serverUrlInput = document.getElementById("serverUrl");
+      const imeiInput = document.getElementById("imei");
+      const logsContainer = document.getElementById("logs");
+
+      // Device elements
+      const connectDeviceBtn = document.getElementById("connectDeviceBtn");
+      const disconnectDeviceBtn = document.getElementById(
+        "disconnectDeviceBtn"
+      );
+      const deviceStatus = document.getElementById("deviceStatus");
+
+      // Watcher elements
+      const connectWatcherBtn = document.getElementById("connectWatcherBtn");
+      const disconnectWatcherBtn = document.getElementById(
+        "disconnectWatcherBtn"
+      );
+      const watcherStatus = document.getElementById("watcherStatus");
+      const pollingIntervalInput = document.getElementById("pollingInterval");
+      const togglePollingBtn = document.getElementById("togglePollingBtn");
+
+      let deviceSocket = null;
+      let watcherSocket = null;
+      let pollingInterval = null;
+
+      function log(message, type = "system", data = null) {
+        const logEntry = document.createElement("div");
+        logEntry.className = `log ${type}`;
+        logEntry.innerHTML =
+          `<strong>[${new Date().toLocaleTimeString()}] ${message}</strong>` +
+          (data ? `<pre>${JSON.stringify(data, null, 2)}</pre>` : "");
+        logsContainer.prepend(logEntry);
+      }
+
+      // --- Device Connection Logic ---
+      connectDeviceBtn.addEventListener("click", () => {
+        if (deviceSocket) return;
+        deviceSocket = io(serverUrlInput.value, {
+          auth: { imei: imeiInput.value },
+        });
+        log(`Device: Connecting with IMEI ${imeiInput.value}...`, "device");
+
+        deviceSocket.on("connect", () => {
+          log("Device: Connected successfully!", "device", {
+            socketId: deviceSocket.id,
+          });
+          deviceStatus.textContent = "CONNECTED";
+          deviceStatus.className = "status connected";
+          connectDeviceBtn.disabled = true;
+          disconnectDeviceBtn.disabled = false;
+        });
+
+        deviceSocket.on("disconnect", (reason) => {
+          log("Device: Disconnected.", "device", { reason });
+          deviceStatus.textContent = "DISCONNECTED";
+          deviceStatus.className = "status disconnected";
+          connectDeviceBtn.disabled = false;
+          disconnectDeviceBtn.disabled = true;
+          deviceSocket = null;
+        });
+        deviceSocket.on("device_registered", (data) =>
+          log("Device: Server confirmed registration.", "device", data)
+        );
+        deviceSocket.on("error", (error) =>
+          log("Device: Received an error!", "error", error)
+        );
+      });
+      disconnectDeviceBtn.addEventListener("click", () =>
+        deviceSocket?.disconnect()
+      );
+
+      // --- Watcher Connection & Polling Logic ---
+      function stopPolling() {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+          togglePollingBtn.textContent = "Start Polling";
+          log("Watcher: Stopped polling.", "system");
+        }
+      }
+
+      function startPolling() {
+        stopPolling();
+        const interval = parseInt(pollingIntervalInput.value, 10) || 5000;
+        log(`Watcher: Starting to poll every ${interval}ms.`, "system");
+
+        pollingInterval = setInterval(() => {
+          if (watcherSocket?.connected) {
+            const imei = imeiInput.value;
+            log(`Watcher: Polling for telemetry...`, "poll", { imei });
+            watcherSocket.emit("get_real_time_telemetry", { imei });
+          } else {
+            stopPolling();
+          }
+        }, interval);
+        togglePollingBtn.textContent = "Stop Polling";
+      }
+
+      connectWatcherBtn.addEventListener("click", () => {
+        if (watcherSocket) return;
+        watcherSocket = io(serverUrlInput.value); // Watchers connect without auth
+        log(`Watcher: Connecting...`, "watcher");
+
+        watcherSocket.on("connect", () => {
+          log("Watcher: Connected successfully!", "watcher", {
+            socketId: watcherSocket.id,
+          });
+          watcherStatus.textContent = "CONNECTED";
+          watcherStatus.className = "status connected";
+          connectWatcherBtn.disabled = true;
+          disconnectWatcherBtn.disabled = false;
+          togglePollingBtn.disabled = false;
+
+          const imeiToWatch = imeiInput.value;
+          log(
+            `Watcher: Subscribing to updates for IMEI ${imeiToWatch}...`,
+            "watcher"
+          );
+          watcherSocket.emit("subscribe_to_device", { imei: imeiToWatch });
+
+          startPolling();
+        });
+
+        watcherSocket.on("disconnect", (reason) => {
+          log("Watcher: Disconnected.", "watcher", { reason });
+          stopPolling();
+          watcherStatus.textContent = "DISCONNECTED";
+          watcherStatus.className = "status disconnected";
+          connectWatcherBtn.disabled = false;
+          disconnectWatcherBtn.disabled = true;
+          togglePollingBtn.disabled = true;
+          watcherSocket = null;
+        });
+
+        // Listen for events broadcasted from the server
+        watcherSocket.on("device_subscribed", (data) =>
+          log("Watcher: Server confirmed subscription.", "watcher", data)
+        );
+        watcherSocket.on("telemetry_update", (data) =>
+          log("Watcher: Received a pushed telemetry update!", "watcher", data)
+        );
+        watcherSocket.on("real_time_telemetry", (data) =>
+          log("Watcher: Received polled telemetry data.", "poll", data)
+        );
+        watcherSocket.on("error", (error) =>
+          log("Watcher: Received an error!", "error", error)
+        );
+      });
+
+      disconnectWatcherBtn.addEventListener("click", () =>
+        watcherSocket?.disconnect()
+      );
+
+      togglePollingBtn.addEventListener("click", () => {
+        if (pollingInterval) stopPolling();
+        else startPolling();
+      });
+    </script>
+  </body>
+</html>
