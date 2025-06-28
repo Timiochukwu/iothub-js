@@ -7,8 +7,6 @@ export function mapTelemetry(raw: any): TelemetryDTO {
 
   const reported = plainRaw.state?.reported || {};
   const mapped: any = {};
-  console.log("Mapping telemetry data (plain object):", plainRaw); // Updated log for clarity
-  console.log("Reported telemetry data:", reported); // This will now show the correct data
 
   for (const [key, value] of Object.entries(reported)) {
     // This loop will now work as expected

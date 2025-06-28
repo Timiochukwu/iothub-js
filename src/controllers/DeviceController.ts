@@ -5,8 +5,8 @@ import { deviceSchemas, querySchemas } from "../utils/validationSchemas";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth";
 import { ApiResponse, DeviceDto, DeviceSwitchRequest } from "../types";
 import { CustomError } from "../middleware/errorHandler";
-import { Telemetry } from '../models/Telemetry';
-import { mapTelemetry } from '../utils/mapTelemetry';
+import { Telemetry } from "../models/Telemetry";
+import { mapTelemetry } from "../utils/mapTelemetry";
 
 export class DeviceController {
   private deviceService: DeviceService;
@@ -53,15 +53,17 @@ export class DeviceController {
   };
 
   // GET /api/devices?email=user@example.com
-  listDevices = async (req: Request, res: Response): Promise<void> => {
+  listDevices = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
-      const { email } = req.query;
-
-      if (!email || typeof email !== "string") {
-        throw new CustomError("Email parameter is required", 400);
+      const { userId } = req.user || {};
+      if (!userId) {
+        throw new CustomError("User not authenticated", 401);
       }
 
-      const result = await this.deviceService.listDevices(email);
+      const result = await this.deviceService.listDevices(userId);
       res.status(200).json(result);
     } catch (error) {
       if (error instanceof CustomError) {
@@ -275,13 +277,21 @@ export class DeviceController {
     try {
       const { imei } = req.params;
       if (!imei) {
-        res.status(400).json({ success: false, message: 'IMEI is required', error: 'MISSING_IMEI' });
+        res.status(400).json({
+          success: false,
+          message: "IMEI is required",
+          error: "MISSING_IMEI",
+        });
         return;
       }
       const result = await this.deviceService.getDeviceByImei(imei);
       res.status(200).json(result);
     } catch (error) {
-      res.status(500).json({ success: false, message: 'Internal server error', error: 'INTERNAL_ERROR' });
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        error: "INTERNAL_ERROR",
+      });
     }
   };
 
@@ -290,12 +300,22 @@ export class DeviceController {
     try {
       const { imei } = req.params;
       if (!imei) {
-        res.status(400).json({ success: false, message: 'IMEI is required', error: 'MISSING_IMEI' });
+        res.status(400).json({
+          success: false,
+          message: "IMEI is required",
+          error: "MISSING_IMEI",
+        });
         return;
       }
-      const latestTelemetry = await Telemetry.findOne({ imei }).sort({ timestamp: -1 });
+      const latestTelemetry = await Telemetry.findOne({ imei }).sort({
+        timestamp: -1,
+      });
       if (!latestTelemetry) {
-        res.status(404).json({ success: false, message: 'No telemetry found for this device', error: 'NO_TELEMETRY' });
+        res.status(404).json({
+          success: false,
+          message: "No telemetry found for this device",
+          error: "NO_TELEMETRY",
+        });
         return;
       }
       // Simulate raw telemetry doc for mapTelemetry
@@ -304,12 +324,20 @@ export class DeviceController {
       // No payload field in Telemetry model, so skip merging payload
       const mapped = mapTelemetry(raw);
       if (!mapped.vin) {
-        res.status(404).json({ success: false, message: 'VIN not found in latest telemetry', error: 'VIN_NOT_FOUND' });
+        res.status(404).json({
+          success: false,
+          message: "VIN not found in latest telemetry",
+          error: "VIN_NOT_FOUND",
+        });
         return;
       }
       res.status(200).json({ success: true, vin: mapped.vin });
     } catch (error) {
-      res.status(500).json({ success: false, message: 'Internal server error', error: 'INTERNAL_ERROR' });
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        error: "INTERNAL_ERROR",
+      });
     }
   };
 
@@ -319,13 +347,24 @@ export class DeviceController {
       const { imei } = req.params;
       const vehicleInfo = req.body;
       if (!imei) {
-        res.status(400).json({ success: false, message: 'IMEI is required', error: 'MISSING_IMEI' });
+        res.status(400).json({
+          success: false,
+          message: "IMEI is required",
+          error: "MISSING_IMEI",
+        });
         return;
       }
-      const result = await this.deviceService.updateVehicleInfo(imei, vehicleInfo);
+      const result = await this.deviceService.updateVehicleInfo(
+        imei,
+        vehicleInfo
+      );
       res.status(200).json({ success: true, data: result });
     } catch (error) {
-      res.status(500).json({ success: false, message: 'Internal server error', error: 'INTERNAL_ERROR' });
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        error: "INTERNAL_ERROR",
+      });
     }
   };
 }

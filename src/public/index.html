@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Socket.IO Test Client (IMEI-Centric)</title>
+    <title>Socket.IO Test Client (JWT Auth)</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
       body {
@@ -84,6 +84,7 @@
         padding: 8px;
         background-color: #111;
         border-radius: 4px;
+        word-break: break-all;
       }
       .input-group {
         margin-bottom: 15px;
@@ -93,7 +94,9 @@
         margin-bottom: 5px;
         color: #ccc;
       }
-      input {
+      input,
+      textarea {
+        /* <-- NEW: Added textarea styling */
         width: 100%;
         padding: 8px;
         box-sizing: border-box;
@@ -137,12 +140,12 @@
           <input type="text" id="serverUrl" value="http://localhost:6162" />
         </div>
         <div class="input-group">
-          <label for="imei">Device IMEI</label>
+          <label for="imei">Device IMEI (to connect or watch)</label>
           <input type="text" id="imei" value="864636069379085" />
         </div>
         <hr />
         <h3>Device Actions</h3>
-        <p>Connect a physical device client.</p>
+        <p>Connect a virtual device client.</p>
         <button id="connectDeviceBtn">Connect as Device</button>
         <button id="disconnectDeviceBtn" disabled>Disconnect</button>
         <p>
@@ -153,8 +156,20 @@
         </p>
 
         <hr />
-        <h3>Device Monitor Actions</h3>
-        <p>Connect a browser to watch a device.</p>
+        <!-- RENAMED for clarity -->
+        <h3>Watcher Actions</h3>
+        <p>Connect a browser to watch a device (requires JWT).</p>
+
+        <!-- NEW: JWT Token Input -->
+        <div class="input-group">
+          <label for="jwtToken">Watcher JWT Token</label>
+          <textarea
+            id="jwtToken"
+            rows="4"
+            placeholder="Paste your JWT here..."
+          ></textarea>
+        </div>
+
         <button id="connectWatcherBtn">Watch Device</button>
         <button id="disconnectWatcherBtn" disabled>Stop Watching</button>
         <p>
@@ -171,13 +186,21 @@
         <button id="togglePollingBtn" disabled>Start Polling</button>
       </div>
 
-      <div class="logs-container">
+      <div id="logs">
         <h2>Live Logs</h2>
-        <div id="logs"></div>
       </div>
     </div>
 
     <script>
+      // How to use this new client:
+      // 1. Get a valid JWT for a user who owns the device with the specified IMEI.
+      // 2. Paste the IMEI into the "Device IMEI" field.
+      // 3. Paste the JWT into the "Watcher JWT Token" field.
+      // 4. Click "Connect as Device" to simulate the physical device connecting.
+      // 5. Click "Watch Device" to connect as an authenticated user.
+      //    - The client will first authenticate with the token.
+      //    - Then it will subscribe to the IMEI. The server will verify ownership.
+
       const serverUrlInput = document.getElementById("serverUrl");
       const imeiInput = document.getElementById("imei");
       const logsContainer = document.getElementById("logs");
@@ -190,6 +213,7 @@
       const deviceStatus = document.getElementById("deviceStatus");
 
       // Watcher elements
+      const jwtTokenInput = document.getElementById("jwtToken"); // NEW
       const connectWatcherBtn = document.getElementById("connectWatcherBtn");
       const disconnectWatcherBtn = document.getElementById(
         "disconnectWatcherBtn"
@@ -211,7 +235,7 @@
         logsContainer.prepend(logEntry);
       }
 
-      // --- Device Connection Logic ---
+      // --- Device Connection Logic (Unchanged) ---
       connectDeviceBtn.addEventListener("click", () => {
         if (deviceSocket) return;
         deviceSocket = io(serverUrlInput.value, {
@@ -248,7 +272,7 @@
         deviceSocket?.disconnect()
       );
 
-      // --- Watcher Connection & Polling Logic ---
+      // --- Watcher Connection & Polling Logic (UPDATED) ---
       function stopPolling() {
         if (pollingInterval) {
           clearInterval(pollingInterval);
@@ -277,8 +301,23 @@
 
       connectWatcherBtn.addEventListener("click", () => {
         if (watcherSocket) return;
-        watcherSocket = io(serverUrlInput.value); // Watchers connect without auth
-        log(`Watcher: Connecting...`, "watcher");
+
+        // NEW: Get the JWT from the input
+        const token = jwtTokenInput.value.trim();
+        if (!token) {
+          log(
+            "Watcher: JWT Token is required to connect as a watcher.",
+            "error"
+          );
+          return;
+        }
+
+        // NEW: Provide the token in the 'auth' object
+        watcherSocket = io(serverUrlInput.value, {
+          auth: { token: token },
+        });
+
+        log(`Watcher: Connecting with JWT...`, "watcher");
 
         watcherSocket.on("connect", () => {
           log("Watcher: Connected successfully!", "watcher", {
@@ -290,13 +329,8 @@
           disconnectWatcherBtn.disabled = false;
           togglePollingBtn.disabled = false;
 
-          const imeiToWatch = imeiInput.value;
-          log(
-            `Watcher: Subscribing to updates for IMEI ${imeiToWatch}...`,
-            "watcher"
-          );
-          watcherSocket.emit("subscribe_to_device", { imei: imeiToWatch });
-
+          // The rest of the logic can proceed after connection,
+          // but now the server knows who we are.
           startPolling();
         });
 
@@ -311,7 +345,19 @@
           watcherSocket = null;
         });
 
-        // Listen for events broadcasted from the server
+        // NEW: Listen for the 'authenticated' event from the server
+        watcherSocket.on("authenticated", (data) => {
+          log("Watcher: Server confirmed authentication.", "watcher", data);
+          // Now that we are authenticated, we can subscribe.
+          const imeiToWatch = imeiInput.value;
+          log(
+            `Watcher: Subscribing to updates for IMEI ${imeiToWatch}...`,
+            "watcher"
+          );
+          watcherSocket.emit("subscribe_to_device", { imei: imeiToWatch });
+        });
+
+        // Listen for standard events
         watcherSocket.on("device_subscribed", (data) =>
           log("Watcher: Server confirmed subscription.", "watcher", data)
         );

@@ -259,23 +259,30 @@ export class DeviceService {
 
   async getDeviceByImei(imei: string): Promise<ApiResponse> {
     try {
-      const device = await Device.findOne({ imei }).populate('user', '_id');
+      const device = await Device.findOne({ imei }).populate("user", "_id");
       if (!device) {
-        return { success: false, message: 'Device not found', data: null };
+        return { success: false, message: "Device not found", data: null };
       }
       // Only include user._id in the response
       const deviceObj = device.toObject();
-      const responseObj: any = { ...deviceObj, userId: (device.user as any)._id.toString() };
+      const responseObj: any = {
+        ...deviceObj,
+        userId: (device.user as any)._id.toString(),
+      };
       delete responseObj.user;
-      return { success: true, message: 'Device retrieved successfully', data: responseObj };
+      return {
+        success: true,
+        message: "Device retrieved successfully",
+        data: responseObj,
+      };
     } catch (error) {
-      throw new CustomError('Failed to fetch device', 500);
+      throw new CustomError("Failed to fetch device", 500);
     }
   }
 
-  async listDevices(email: string): Promise<ApiResponse> {
+  async listDevices(id: string): Promise<ApiResponse> {
     try {
-      const user = await User.findOne({ email });
+      const user = await User.findById(id);
       if (!user) {
         throw new CustomError("User not found", 404);
       }
@@ -294,7 +301,10 @@ export class DeviceService {
     }
   }
 
-  async updateVehicleInfo(imei: string, vehicleInfo: any): Promise<IDevice | null> {
+  async updateVehicleInfo(
+    imei: string,
+    vehicleInfo: any
+  ): Promise<IDevice | null> {
     try {
       const update: any = {};
       if (vehicleInfo.vin) update.vin = vehicleInfo.vin;
@@ -307,11 +317,11 @@ export class DeviceService {
         { $set: update },
         { new: true }
       );
-      if (!device) throw new CustomError('Device not found', 404);
+      if (!device) throw new CustomError("Device not found", 404);
       return device;
     } catch (error) {
       if (error instanceof CustomError) throw error;
-      throw new CustomError('Failed to update vehicle info', 500);
+      throw new CustomError("Failed to update vehicle info", 500);
     }
   }
 }
