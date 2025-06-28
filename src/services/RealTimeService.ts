@@ -112,17 +112,17 @@ export class RealTimeService {
       socket.data.user = decoded;
 
       // Join a user-specific room (useful for sending notifications to all of a user's sessions)
-      const userRoom = `user:${decoded.email}`;
+      const userRoom = `user:${decoded.userId}`;
       socket.join(userRoom);
 
       // Track the user's socket connections
-      if (!this.userSockets.has(decoded.email)) {
-        this.userSockets.set(decoded.email, new Set());
+      if (!this.userSockets.has(decoded.userId)) {
+        this.userSockets.set(decoded.userId, new Set());
       }
-      this.userSockets.get(decoded.email)!.add(socket.id);
+      this.userSockets.get(decoded.userId)!.add(socket.id);
 
       console.log(
-        `[Auth] ✅ User '${decoded.email}' authenticated for socket ${socket.id}`
+        `[Auth] ✅ User '${decoded.userId}' authenticated for socket ${socket.id}`
       );
       socket.emit("authenticated", { message: "Authentication successful." });
     } catch (error) {
@@ -362,17 +362,17 @@ export class RealTimeService {
 
     // 🟢 NEW: Check if it was an authenticated user and clean up userSockets map
     const user = socket.data.user;
-    if (user && user.email) {
-      const userSocketSet = this.userSockets.get(user.email);
+    if (user && user.userId) {
+      const userSocketSet = this.userSockets.get(user.userId);
       if (userSocketSet) {
         userSocketSet.delete(socket.id);
         console.log(
-          `[Connection] 👤 User '${user.email}' socket ${socket.id} removed.`
+          `[Connection] 👤 User '${user.userId}' socket ${socket.id} removed.`
         );
         if (userSocketSet.size === 0) {
-          this.userSockets.delete(user.email);
+          this.userSockets.delete(user.userId);
           console.log(
-            `[Connection] 👤 All sockets for user '${user.email}' disconnected.`
+            `[Connection] 👤 All sockets for user '${user.userId}' disconnected.`
           );
         }
       }
