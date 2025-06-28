@@ -18,6 +18,8 @@ import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger";
 import geofenceRoutes from "./routes/geofenceRoutes";
 
+import path from "path";
+
 // Load environment variables
 dotenv.config();
 
@@ -55,6 +57,34 @@ if (process.env.NODE_ENV === "development") {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+app.use(
+  "/",
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", "https://cdn.socket.io"],
+        "script-src-elem": [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdn.socket.io",
+        ],
+      },
+    },
+  })
+);
+
+// Serve static files from the "public" directory in your build output (dist/public)
+// This lets the browser request other files like CSS or JS if you add them.
+app.use(express.static(path.join(__dirname, "public")));
+
+// Explicitly define the handler for the root path AFTER the static middleware.
+app.get("/", (req, res) => {
+  // IMPORTANT: The path should be relative to where the script is running (dist folder).
+  // Don't use "src/public" in production.
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 // Swagger API docs
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
@@ -89,25 +119,6 @@ app.get("/api/realtime/status", (req, res) => {
 });
 
 // Serve static files from the "public" directory
-
-app.use("/", (req, res, next) => {
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        "script-src": ["'self'", "https://cdn.socket.io"], // Allow scripts from self and the CDN
-        "script-src-elem": [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdn.socket.io",
-        ], // Allow inline scripts and CDN scripts
-      },
-    },
-  })(req, res, next);
-});
-app.get("/", (req, res) => {
-  res.sendFile("index.html", { root: "src/public" });
-});
 
 // 404 handler
 app.use(notFoundHandler);
