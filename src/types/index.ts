@@ -164,6 +164,16 @@ export interface TelemetryPayload {
   };
 }
 
+
+export CreateGeofenceRequest {
+  name: string;
+  description?: string;
+  coordinates: {
+    type: "Polygon";
+    coordinates: number[][][];
+  };
+}
+
 // Telemetry DTOs (matching Java implementation)
 export interface TirePressureDTO {
   id: string;
