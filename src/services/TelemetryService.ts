@@ -84,7 +84,12 @@ export class TelemetryService {
 
   async getDeviceLatestTelemetry(imei: string): Promise<TelemetryData | null> {
     try {
-      const latest = await Telemetry.findOne({ imei }).sort({ timestamp: -1 });
+      // const latest = await Telemetry.findOne({ imei }).sort({ timestamp: -1 });
+      // get last data by imei there's no timestamp field in Telemetry
+      // sort by state.reported.ts
+      const latest = await Telemetry.findOne({ imei }).sort({
+        "state.reported.ts": -1,
+      });
 
       return latest ? this.mapToTelemetryData(latest) : null;
     } catch (error) {

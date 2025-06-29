@@ -307,9 +307,18 @@ export class DeviceController {
         });
         return;
       }
-      const latestTelemetry = await Telemetry.findOne({ imei }).sort({
-        timestamp: -1,
-      });
+
+      // Find the latest telemetry for the device by IMEI where state.reported ahve object key 99
+      // Note: Telemetry model does not have a 'payload' field, so we will not merge payload
+
+      // const latestTelemetry = await Telemetry.findOne({ imei }).sort({
+      //   "state.reported.ts": -1,
+      // });
+
+      const latestTelemetry = await Telemetry.findOne({
+        imei,
+        "state.reported.256": { $exists: true },
+      }).sort({ "state.reported.ts": -1 });
       if (!latestTelemetry) {
         res.status(404).json({
           success: false,
