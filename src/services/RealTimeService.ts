@@ -44,7 +44,7 @@ export class RealTimeService {
       cors: {
         origin: [
           process.env.FRONTEND_URL || "http://localhost:3000",
-          "http://localhost:6162",
+          "http://localhost:6162", "http://localhost:5177",
         ],
         methods: ["GET", "POST"],
       },
