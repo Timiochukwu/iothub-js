@@ -144,7 +144,7 @@ const startServer = async (): Promise<void> => {
   try {
     // Initialize MongoDB
     await connectMongoDB();
-    console.log("✅ Connected to MongoDB");
+    console.log(" Connected to MongoDB");
 
     // Start HTTP server with WebSocket support
     httpServer.listen(PORT, () => {

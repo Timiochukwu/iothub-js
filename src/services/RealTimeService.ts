@@ -161,7 +161,7 @@ export class RealTimeService {
   }
 
   private async registerDevice(socket: Socket, imei: string): Promise<void> {
-    // ... (This function remains unchanged)
+   
     console.log(`[Register] 📝 Starting registration for IMEI: ${imei}`);
 
     const device = await Device.findOne({ imei });
@@ -247,7 +247,7 @@ export class RealTimeService {
     }
   }
 
-  // 🔴 CHANGED: handleGetRealTimeTelemetry also needs authorization
+ 
   private async handleGetRealTimeTelemetry(
     socket: Socket<any, any, any, SocketData>,
     data: ImeiPayload
@@ -299,7 +299,7 @@ export class RealTimeService {
     }
   }
 
-  // ... handleTelemetryData remains unchanged, as it's a device-initiated event.
+  //  it's a device-initiated event.
   private async handleTelemetryData(
     socket: Socket,
     payload: TelemetryPayload

@@ -142,4 +142,28 @@ export class UserController {
       });
     }
   };
+
+  // GET /api/auth/me
+  me = async (req: AuthenticatedRequest, res: Response<ApiResponse>): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: "User not authenticated",
+          error: "UNAUTHORIZED",
+        });
+        return;
+      }
+      // Fetch user from DB to get latest info (excluding password)
+      const user = await this.userService.searchUser(req.user.email);
+      res.status(200).json(user);
+    } catch (error) {
+      const customError = error as CustomError;
+      res.status(customError.statusCode || 500).json({
+        success: false,
+        message: customError.message,
+        error: customError.statusCode ? undefined : "INTERNAL_ERROR",
+      });
+    }
+  };
 }
