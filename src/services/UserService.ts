@@ -42,12 +42,11 @@ export class UserService {
       const user = await User.create(userObj);
 
       // Send verification email (like in Java)
-      await this.sendVerificationEmail(userData.email, true);
+      // await this.sendVerificationEmail(userData.email, true);
 
       return {
         success: true,
-        message: `Verification email sent to ${userData.email}`,
-        data: null,
+        message: `User registered successfully`
       };
     } catch (error) {
       if (error instanceof CustomError) {

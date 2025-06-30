@@ -295,60 +295,52 @@ export class DeviceController {
     }
   };
 
-  // GET /api/devices/:imei/vin
-  getDeviceVin = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { imei } = req.params;
-      if (!imei) {
-        res.status(400).json({
-          success: false,
-          message: "IMEI is required",
-          error: "MISSING_IMEI",
-        });
-        return;
-      }
+// GET /api/devices/:imei/vin
+getDeviceVin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { imei } = req.params;
 
-      // Find the latest telemetry for the device by IMEI where state.reported ahve object key 99
-      // Note: Telemetry model does not have a 'payload' field, so we will not merge payload
+    if (!imei) {
+      res.status(400).json({
+        success: false,
+        message: "IMEI is required",
+        error: "MISSING_IMEI",
+      });
+      return;
+    }
 
-      // const latestTelemetry = await Telemetry.findOne({ imei }).sort({
-      //   "state.reported.ts": -1,
-      // });
+    // 🔍 First: Try to get VIN from latest telemetry with VIN
+    const latestTelemetry = await Telemetry.findOne({
+      imei,
+      "state.reported.256": { $exists: true },
+    }).sort({ "state.reported.ts": -1 });
 
-      const latestTelemetry = await Telemetry.findOne({
-        imei,
-        "state.reported.256": { $exists: true },
-      }).sort({ "state.reported.ts": -1 });
-      if (!latestTelemetry) {
-        res.status(404).json({
-          success: false,
-          message: "No telemetry found for this device",
-          error: "NO_TELEMETRY",
-        });
-        return;
-      }
-      // Simulate raw telemetry doc for mapTelemetry
+    if (latestTelemetry) {
       const raw = { state: { reported: {} }, ...latestTelemetry.toObject() };
       raw.state.reported = raw.state.reported || {};
-      // No payload field in Telemetry model, so skip merging payload
       const mapped = mapTelemetry(raw);
-      if (!mapped.vin) {
-        res.status(404).json({
-          success: false,
-          message: "VIN not found in latest telemetry",
-          error: "VIN_NOT_FOUND",
-        });
+      if (mapped.vin) {
+        res.status(200).json({ success: true, vin: mapped.vin });
         return;
       }
-      res.status(200).json({ success: true, vin: mapped.vin });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: "Internal server error",
-        error: "INTERNAL_ERROR",
-      });
     }
-  };
+
+    //  If no VIN found anywhere
+    res.status(404).json({
+      success: false,
+      message: "VIN not found in telemetry or device metadata",
+      error: "VIN_NOT_FOUND",
+    });
+  } catch (error) {
+    console.error("[getDeviceVin] Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: "INTERNAL_ERROR",
+    });
+  }
+};
+
 
   // POST /api/devices/:imei/vehicle-info
   submitVehicleInfo = async (req: Request, res: Response): Promise<void> => {
