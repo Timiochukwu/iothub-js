@@ -402,10 +402,12 @@
         );
       }
 
-      togglePollingBtn.addEventListener("click", () => {
-        if (pollingInterval) stopPolling();
-        else startPolling();
-      });
+      if (togglePollingBtn) {
+        togglePollingBtn.addEventListener("click", () => {
+          if (pollingInterval) stopPolling();
+          else startPolling();
+        });
+      }
     </script>
   </body>
 </html>
