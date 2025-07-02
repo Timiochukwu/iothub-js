@@ -38,10 +38,9 @@ export interface TelemetryDTO {
   engineRpm: number | null; // From '36'
   fuelLevel: number | null; // From '48'
 
-  fuel?: FuelInfo;
-  collision?: CollisionInfo;
-  odometer?: OdometerInfo;
-  ignition?: boolean;
+  fuel?: any;
+  collision?: any;
+  odometer?: any;
 
   // Health and environment
   batteryVoltage: number | null; // From '67', raw value in millivolts
