@@ -396,9 +396,11 @@
       //   );
       // });
 
-      disconnectWatcherBtn.addEventListener("click", () =>
-        watcherSocket?.disconnect()
-      );
+      if (disconnectWatcherBtn) {
+        disconnectWatcherBtn.addEventListener("click", () =>
+          watcherSocket?.disconnect()
+        );
+      }
 
       togglePollingBtn.addEventListener("click", () => {
         if (pollingInterval) stopPolling();
