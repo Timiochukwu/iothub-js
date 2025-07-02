@@ -347,6 +347,11 @@
           log("Watcher: Received polled telemetry data.", "poll", data)
         );
 
+        // NEW: Listen for collision alerts
+        watcherSocket.on("collision_alert", (data) => {
+          log("🚨 Collision Alert Received!", "error", data);
+        });
+
         watcherSocket.on("error", (error) => {
           log("Watcher: Received an error!", "error", error);
         });

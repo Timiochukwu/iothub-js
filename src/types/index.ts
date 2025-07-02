@@ -128,6 +128,7 @@ export interface TelemetryData {
   engineRpm?: number;
   engineOilTemp?: number;
   crashDetection?: number;
+  collisionAlert?: boolean;
   engineLoad?: number;
   dtc?: number;
   externalVoltage?: number;
@@ -244,7 +245,9 @@ export interface CrashDetectionDTO {
   crashDetection: number | null;
   timestamp: number;
   message: string;
+  severity: 'none' | 'minor' | 'moderate' | 'severe';
   formattedTimestamp: string;
+  requiresAction: boolean;
 }
 
 export interface EngineLoadDTO {

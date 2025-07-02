@@ -1,5 +1,7 @@
 import { Telemetry, ITelemetry } from "../models/Telemetry";
 import { Device } from "../models/Device";
+import { CollisionDetectionService, CollisionAlert, CollisionEvent } from "./CollisionDetectionService";
+
 
 const AVL_ID_MAP = {
   FUEL_LEVEL: "66",
@@ -43,6 +45,12 @@ import { mapTelemetry } from "../utils/mapTelemetry";
 import { CustomError } from "../middleware/errorHandler";
 
 export class TelemetryService {
+  private collisionDetectionService: CollisionDetectionService;
+
+  constructor() {
+    this.collisionDetectionService = new CollisionDetectionService();
+  }
+
   async ingestTelemetry(payload: TelemetryPayload): Promise<ApiResponse> {
     try {
       const { imei, payload: telemetryPayload } = payload;
@@ -72,15 +80,100 @@ export class TelemetryService {
       const telemetry = new Telemetry(telemetryData);
       await telemetry.save();
 
+       // Check for collision events
+       const collisionAlert = await this.collisionDetectionService.analyzeForCollision(payload.payload);
+      
+
       return {
         success: true,
         message: "Telemetry data ingested successfully",
-        data: { id: telemetry._id!.toString() },
+        data: { id: telemetry._id!.toString(),
+        collisionAlert
+        },
+        
       };
     } catch (error) {
       throw new CustomError("Failed to ingest telemetry data", 500);
     }
   }
+  // Get collision history for a device
+  async getCollisionHistory(imei: string, limit: number = 10): Promise<CollisionEvent[]> {
+    try {
+      return await this.collisionDetectionService.getRecentCollisions(imei, limit);
+    } catch (error) {
+      throw new CustomError("Failed to fetch collision history", 500);
+    }
+  }
+
+  // 🟢 NEW: Get collision statistics
+  async getCollisionStatistics(imei: string, days: number = 30): Promise<{
+    total: number;
+    byDay: Array<{ date: string; count: number }>;
+    bySeverity: { minor: number; moderate: number; severe: number };
+  }> {
+    try {
+      return await this.collisionDetectionService.getCollisionStats(imei, days);
+    } catch (error) {
+      throw new CustomError("Failed to fetch collision statistics", 500);
+    }
+  }
+
+  // 🟢 NEW: Update collision status
+  async updateCollisionStatus(
+    imei: string, 
+    collisionId: string, 
+    status: 'confirmed' | 'false_alarm',
+    responseTime?: number
+  ): Promise<void> {
+    try {
+      await this.collisionDetectionService.updateCollisionStatus(imei, collisionId, status, responseTime);
+    } catch (error) {
+      throw new CustomError("Failed to update collision status", 500);
+    }
+  }
+
+  // 🟢 NEW: Enhanced crash detection method with more detailed information
+  async getLatestCrashDetection(): Promise<CrashDetectionDTO | null> {
+    try {
+      const latest = await this.getLatestTelemetry();
+      if (!latest) return null;
+
+      const message = this.getCrashDetectionMessage(latest.crashDetection);
+      const severity = this.getCrashSeverity(latest.crashDetection);
+
+      return {
+        id: latest.id!,
+        crashDetection: latest.crashDetection || null,
+        timestamp: latest.timestamp,
+        message,
+        severity,
+        formattedTimestamp: this.formatTimestamp(latest.timestamp),
+        requiresAction: severity === 'severe' || severity === 'moderate'
+      };
+    } catch (error) {
+      throw new CustomError("Failed to fetch crash detection data", 500);
+    }
+  }
+
+  private getCrashSeverity(crashDetection: number | undefined): 'none' | 'minor' | 'moderate' | 'severe' {
+    if (!crashDetection || crashDetection === 0) return 'none';
+
+    switch (crashDetection) {
+      case 1:
+      case 6:
+        return 'severe'; // Real crash detected
+      case 4:
+      case 5:
+        return 'moderate'; // Full crash trace
+      case 2:
+      case 3:
+        return 'minor'; // Limited crash trace
+      default:
+        return 'minor';
+    }
+  }
+
+
 
   async getAllTelemetry(): Promise<TelemetryData[]> {
     try {
@@ -526,24 +619,7 @@ export class TelemetryService {
     }
   }
 
-  async getLatestCrashDetection(): Promise<CrashDetectionDTO | null> {
-    try {
-      const latest = await this.getLatestTelemetry();
-      if (!latest) return null;
 
-      const message = this.getCrashDetectionMessage(latest.crashDetection);
-
-      return {
-        id: latest.id!,
-        crashDetection: latest.crashDetection || null,
-        timestamp: latest.timestamp,
-        message,
-        formattedTimestamp: this.formatTimestamp(latest.timestamp),
-      };
-    } catch (error) {
-      throw new CustomError("Failed to fetch crash detection data", 500);
-    }
-  }
 
   async getLatestEngineLoad(): Promise<EngineLoadDTO | null> {
     try {
@@ -752,24 +828,25 @@ export class TelemetryService {
     return new Date(timestamp).toISOString().replace("T", " ").substring(0, 19);
   }
 
+  // Enhanced crash detection message method
   private getCrashDetectionMessage(crashDetection: number | undefined): string {
     if (!crashDetection || crashDetection === 0) return "No crash detected";
 
     switch (crashDetection) {
       case 1:
-        return "Real crash detected (device is calibrated)";
+        return "🚨 REAL CRASH DETECTED (device calibrated) - Emergency response may be required";
       case 2:
-        return "Limited crash trace (device not calibrated)";
+        return "⚠️ Limited crash trace detected (device not calibrated)";
       case 3:
-        return "Limited crash trace (device is calibrated)";
+        return "⚠️ Limited crash trace detected (device calibrated)";
       case 4:
-        return "Full crash trace (device not calibrated)";
+        return "🔶 Full crash trace detected (device not calibrated)";
       case 5:
-        return "Full crash trace (device is calibrated)";
+        return "🔶 Full crash trace detected (device calibrated)";
       case 6:
-        return "Real crash detected (device not calibrated)";
+        return "🚨 REAL CRASH DETECTED (device not calibrated) - Emergency response may be required";
       default:
-        return "Unknown crash detection value";
+        return `Unknown crash detection value: ${crashDetection}`;
     }
   }
 

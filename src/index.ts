@@ -17,6 +17,8 @@ import { RealTimeService } from "./services/RealTimeService";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger";
 import geofenceRoutes from "./routes/geofenceRoutes";
+import { collisionRoutes } from "./routes/collisionRoutes";
+import { notificationRouter } from "./routes/notificationRoutes";
 
 import path from "path";
 
@@ -122,6 +124,8 @@ apiRouter.use("/users", userRoutes);
 apiRouter.use("/telemetry", telemetryRoutes);
 apiRouter.use("/realtime", realtimeRoutes);
 apiRouter.use("/geofences", geofenceRoutes);
+apiRouter.use("/collisions", collisionRoutes);
+apiRouter.use("/notifications", notificationRouter);
 
 // Mount the entire API logic on the '/api' path.
 app.use("/api", apiRouter);

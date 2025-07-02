@@ -37,6 +37,8 @@
 │   │   ├── GeofenceEvent.ts
 │   │   ├── Telemetry.ts
 │   │   └── User.ts
+│   ├── public
+│   │   └── index.html
 │   ├── routes
 │   │   ├── authRoutes.ts
 │   │   ├── deviceRoutes.ts
@@ -50,23 +52,30 @@
 │   │   ├── EmailService.ts
 │   │   ├── GeofenceService.ts
 │   │   ├── RealTimeService.ts
+│   │   ├── RealTimeServiceOld.js
 │   │   ├── TelemetryService.ts
 │   │   └── UserService.ts
 │   ├── test
 │   │   └── setup.ts
 │   ├── types
+│   │   ├── AnalyticsDTO.ts
 │   │   ├── TelemetryDTO.ts
 │   │   ├── bcryptjs.d.ts
 │   │   └── index.ts
 │   └── utils
+│       ├── ValidationUtils.ts
+│       ├── appEmitter.ts
 │       ├── jwt.ts
 │       ├── mapTelemetry.ts
+│       ├── responseHandler.ts
 │       ├── telemetryCodeMap.ts
+│       ├── telemetryParser.ts
 │       └── validationSchemas.ts
 ├── test-realtime.js
 ├── tsconfig.json
 ├── types
 │   └── bcryptjs.d.ts
+├── websocket docs.md
 └── yarn.lock
 
-12 directories, 58 files
+13 directories, 66 files
