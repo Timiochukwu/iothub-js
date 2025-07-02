@@ -149,6 +149,11 @@ export class RealTimeService {
         // Find the specific room for watchers of this device
         const watchRoom = `watch:${newTelemetryDoc.imei}`;
 
+        // check if room exist else create
+        if (!this.imeiWatchers.has(newTelemetryDoc.imei)) {
+          this.imeiWatchers.set(newTelemetryDoc.imei, new Set());
+        }
+
         // Emit the event to all sockets in that room
         this.io.to(watchRoom).emit(eventName, eventPayload);
 
