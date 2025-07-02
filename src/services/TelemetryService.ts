@@ -18,6 +18,7 @@ import {
   VehicleHealthDTO,
   ApiResponse,
 } from "../types";
+// import appEmitter from "../utils/appEmitter";
 
 import { TelemetryDTO } from "../types/TelemetryDTO";
 

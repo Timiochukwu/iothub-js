@@ -300,77 +300,97 @@
       }
 
       connectWatcherBtn.addEventListener("click", () => {
-        if (watcherSocket) return;
-
-        // NEW: Get the JWT from the input
         const token = jwtTokenInput.value.trim();
-        if (!token) {
-          log(
-            "Watcher: JWT Token is required to connect as a watcher.",
-            "error"
-          );
-          return;
-        }
+        const imeiToWatch = imeiInput.value;
 
         // NEW: Provide the token in the 'auth' object
         watcherSocket = io(serverUrlInput.value, {
           auth: { token: token },
         });
 
-        log(`Watcher: Connecting with JWT...`, "watcher");
+        watcherSocket.emit("subscribe_to_device", { imei: imeiToWatch });
 
-        watcherSocket.on("connect", () => {
-          log("Watcher: Connected successfully!", "watcher", {
-            socketId: watcherSocket.id,
-          });
-          watcherStatus.textContent = "CONNECTED";
-          watcherStatus.className = "status connected";
-          connectWatcherBtn.disabled = true;
-          disconnectWatcherBtn.disabled = false;
-          togglePollingBtn.disabled = false;
-
-          // The rest of the logic can proceed after connection,
-          // but now the server knows who we are.
-          startPolling();
-        });
-
-        watcherSocket.on("disconnect", (reason) => {
-          log("Watcher: Disconnected.", "watcher", { reason });
-          stopPolling();
-          watcherStatus.textContent = "DISCONNECTED";
-          watcherStatus.className = "status disconnected";
-          connectWatcherBtn.disabled = false;
-          disconnectWatcherBtn.disabled = true;
-          togglePollingBtn.disabled = true;
-          watcherSocket = null;
-        });
-
-        // NEW: Listen for the 'authenticated' event from the server
-        watcherSocket.on("authenticated", (data) => {
-          log("Watcher: Server confirmed authentication.", "watcher", data);
-          // Now that we are authenticated, we can subscribe.
-          const imeiToWatch = imeiInput.value;
-          log(
-            `Watcher: Subscribing to updates for IMEI ${imeiToWatch}...`,
-            "watcher"
-          );
-          watcherSocket.emit("subscribe_to_device", { imei: imeiToWatch });
-        });
-
-        // Listen for standard events
         watcherSocket.on("device_subscribed", (data) =>
           log("Watcher: Server confirmed subscription.", "watcher", data)
         );
-        watcherSocket.on("telemetry_update", (data) =>
-          log("Watcher: Received a pushed telemetry update!", "watcher", data)
-        );
+
         watcherSocket.on("real_time_telemetry", (data) =>
           log("Watcher: Received polled telemetry data.", "poll", data)
         );
-        watcherSocket.on("error", (error) =>
-          log("Watcher: Received an error!", "error", error)
-        );
       });
+
+      // connectWatcherBtn.addEventListener("click", () => {
+      //   if (watcherSocket) return;
+
+      //   // NEW: Get the JWT from the input
+      //   const token = jwtTokenInput.value.trim();
+      //   if (!token) {
+      //     log(
+      //       "Watcher: JWT Token is required to connect as a watcher.",
+      //       "error"
+      //     );
+      //     return;
+      //   }
+
+      //   // NEW: Provide the token in the 'auth' object
+      //   watcherSocket = io(serverUrlInput.value, {
+      //     auth: { token: token },
+      //   });
+
+      //   log(`Watcher: Connecting with JWT...`, "watcher");
+
+      //   watcherSocket.on("connect", () => {
+      //     log("Watcher: Connected successfully!", "watcher", {
+      //       socketId: watcherSocket.id,
+      //     });
+      //     watcherStatus.textContent = "CONNECTED";
+      //     watcherStatus.className = "status connected";
+      //     connectWatcherBtn.disabled = true;
+      //     disconnectWatcherBtn.disabled = false;
+      //     togglePollingBtn.disabled = false;
+
+      //     // The rest of the logic can proceed after connection,
+      //     // but now the server knows who we are.
+      //     startPolling();
+      //   });
+
+      //   watcherSocket.on("disconnect", (reason) => {
+      //     log("Watcher: Disconnected.", "watcher", { reason });
+      //     stopPolling();
+      //     watcherStatus.textContent = "DISCONNECTED";
+      //     watcherStatus.className = "status disconnected";
+      //     connectWatcherBtn.disabled = false;
+      //     disconnectWatcherBtn.disabled = true;
+      //     togglePollingBtn.disabled = true;
+      //     watcherSocket = null;
+      //   });
+
+      //   // NEW: Listen for the 'authenticated' event from the server
+      //   watcherSocket.on("authenticated", (data) => {
+      //     log("Watcher: Server confirmed authentication.", "watcher", data);
+      //     // Now that we are authenticated, we can subscribe.
+      //     const imeiToWatch = imeiInput.value;
+      //     log(
+      //       `Watcher: Subscribing to updates for IMEI ${imeiToWatch}...`,
+      //       "watcher"
+      //     );
+      //     watcherSocket.emit("subscribe_to_device", { imei: imeiToWatch });
+      //   });
+
+      //   // Listen for standard events
+      //   watcherSocket.on("device_subscribed", (data) =>
+      //     log("Watcher: Server confirmed subscription.", "watcher", data)
+      //   );
+      //   watcherSocket.on("telemetry_update", (data) =>
+      //     log("Watcher: Received a pushed telemetry update!", "watcher", data)
+      //   );
+      //   watcherSocket.on("real_time_telemetry", (data) =>
+      //     log("Watcher: Received polled telemetry data.", "poll", data)
+      //   );
+      //   watcherSocket.on("error", (error) =>
+      //     log("Watcher: Received an error!", "error", error)
+      //   );
+      // });
 
       disconnectWatcherBtn.addEventListener("click", () =>
         watcherSocket?.disconnect()

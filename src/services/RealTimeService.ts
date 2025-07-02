@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import { Server as HTTPServer } from "http";
 import * as jwt from "jsonwebtoken";
 import { TelemetryService } from "./TelemetryService";
+import { Telemetry, ITelemetry } from "../models/Telemetry";
 import { Device } from "../models/Device";
 import {
   DeviceConnection,
@@ -13,6 +14,8 @@ import {
 import { CustomError } from "../middleware/errorHandler";
 
 import { JwtUtils } from "../utils/jwt";
+import { mapTelemetry } from "../utils/mapTelemetry";
+import { TelemetryDTO } from "../types/TelemetryDTO";
 
 // 🟢 NEW: Define the structure of the JWT payload for type safety.
 interface UserJWTPayload extends jwt.JwtPayload {
@@ -44,7 +47,8 @@ export class RealTimeService {
       cors: {
         origin: [
           process.env.FRONTEND_URL || "http://localhost:3000",
-          "http://localhost:6162", "http://localhost:5177",
+          "http://localhost:6162",
+          "http://localhost:5177",
         ],
         methods: ["GET", "POST"],
       },
@@ -52,6 +56,7 @@ export class RealTimeService {
 
     this.telemetryService = new TelemetryService();
     this.setupSocketHandlers();
+    this.setupChangeStreamListener();
     console.log("✅ RealTimeService initialized with Socket.IO server.");
   }
 
@@ -90,6 +95,76 @@ export class RealTimeService {
         this.handleDisconnection(socket, reason)
       );
     });
+  }
+
+  private mapToTelemetryData(telemetry: ITelemetry): TelemetryData {
+    // console.log("Mapping telemetry data:", telemetry);
+
+    // Step 1: Use the generic utility to get a flexible DTO
+    const telemetryDto: TelemetryDTO = mapTelemetry(telemetry);
+
+    // console.log("Mapped telemetry DTO:", telemetryDto);
+
+    // Step 2: Validate the DTO to ensure it meets the stricter TelemetryData contract
+    if (!telemetryDto.imei) {
+      throw new Error(
+        `Data integrity error: Telemetry record ${telemetry._id} is missing an IMEI.`
+      );
+    }
+    if (telemetryDto.id === undefined) {
+      telemetryDto.id = telemetry._id.toString();
+    }
+
+    // Step 3: Now that we've validated it, we can safely cast and return it as TelemetryData
+    return telemetryDto as TelemetryData;
+  }
+  private setupChangeStreamListener(): void {
+    console.log(
+      "[Change Stream] Setting up listener on Telemetry collection..."
+    );
+
+    // The .watch() method opens a change stream.
+    const changeStream = Telemetry.watch();
+
+    // Listen for the 'change' event.
+    changeStream.on("change", (change) => {
+      // We only care about new documents being created by the third party.
+      if (change.operationType === "insert") {
+        const newTelemetryDoc = change.fullDocument as any;
+        console.log(
+          `[Change Stream] 👂 Detected 'insert' for IMEI: ${newTelemetryDoc.imei}`
+        );
+
+        // Prepare the payload for the clients (watchers)
+        const telemetryData = this.mapToTelemetryData(newTelemetryDoc);
+
+        // This is the event name you wanted
+        const eventName = "real_time_telemetry";
+
+        const eventPayload = {
+          imei: newTelemetryDoc.imei,
+          data: telemetryData,
+        };
+
+        // Find the specific room for watchers of this device
+        const watchRoom = `watch:${newTelemetryDoc.imei}`;
+
+        // Emit the event to all sockets in that room
+        this.io.to(watchRoom).emit(eventName, eventPayload);
+
+        console.log(
+          `[Broadcast] 📡 Relayed DB change for ${newTelemetryDoc.imei} to room '${watchRoom}'.`
+        );
+      }
+    });
+
+    // It's good practice to handle errors
+    changeStream.on("error", (error) => {
+      console.error("[Change Stream] ❌ Error:", error);
+      // You might want to try re-establishing the stream here after a delay
+    });
+
+    console.log("[Change Stream] ✅ Listener is active.");
   }
 
   // 🟢 NEW: Handler for authenticating a user via JWT
@@ -161,7 +236,6 @@ export class RealTimeService {
   }
 
   private async registerDevice(socket: Socket, imei: string): Promise<void> {
-   
     console.log(`[Register] 📝 Starting registration for IMEI: ${imei}`);
 
     const device = await Device.findOne({ imei });
@@ -247,7 +321,6 @@ export class RealTimeService {
     }
   }
 
- 
   private async handleGetRealTimeTelemetry(
     socket: Socket<any, any, any, SocketData>,
     data: ImeiPayload
