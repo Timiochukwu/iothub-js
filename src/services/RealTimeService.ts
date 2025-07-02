@@ -23,6 +23,10 @@ interface HistoryPayload {
   endDate: string;
 }
 
+interface SpeedReportPayload extends HistoryPayload {
+  speedLimitKph: number;
+}
+
 // 🟢 NEW: Define the structure of the JWT payload for type safety.
 interface UserJWTPayload extends jwt.JwtPayload {
   // id: string; // User's MongoDB _id
@@ -107,6 +111,10 @@ export class RealTimeService {
 
       socket.on("fuel_daily_history", (data: HistoryPayload) =>
         this.handleGetFuelDailyHistory(socket, data)
+      );
+
+      socket.on("daily_speed_history", (data: SpeedReportPayload) =>
+        this.handleGetDailySpeedReport(socket, data)
       );
     });
   }
@@ -517,6 +525,51 @@ export class RealTimeService {
       socket.emit("fuel_daily_history", { imei, history });
     } catch (error) {
       // ... standard error handling
+    }
+  }
+
+  private async handleGetDailySpeedReport(
+    socket: Socket<any, any, any, SocketData>,
+    data: SpeedReportPayload
+  ): Promise<void> {
+    try {
+      const { imei, startDate, endDate, speedLimitKph } = data;
+      const user = socket.data.user;
+
+      // Security and validation checks
+      if (!user) throw new CustomError("Authentication required.", 401);
+      if (!imei || !startDate || !endDate) {
+        throw new CustomError(
+          "IMEI, startDate, endDate, and speedLimitKph are required.",
+          400
+        );
+      }
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const device = await Device.findOne({ imei, user: user.userId });
+      if (!device)
+        throw new CustomError(`Access denied to device ${imei}.`, 403);
+
+      console.log(
+        `[Analytics] 🏎️  User '${user.email}' requested daily speed report for ${imei}`
+      );
+      const dailyReport = await this.telemetryService.getDailySpeedReport(
+        imei,
+        start,
+        end
+      );
+
+      socket.emit("daily_speed_history", { imei, dailyReport });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to get speed report";
+      const errorCode = error instanceof CustomError ? error.statusCode : 500;
+      console.error(`[Speed Report] ❌ Error: ${errorMessage}`);
+      socket.emit("error", {
+        message: "Failed to get daily speed report",
+        details: errorMessage,
+        code: errorCode,
+      });
     }
   }
 

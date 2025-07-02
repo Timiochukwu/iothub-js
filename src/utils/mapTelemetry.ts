@@ -3,7 +3,7 @@
 import { TelemetryDTO } from "../types/TelemetryDTO";
 
 const AVL_ID_MAP = {
-  FUEL_LEVEL: "66",
+  FUEL_LEVEL: "48",
   TOTAL_ODOMETER: "241",
   EVENT_IO_ID: "evt",
   // Add other useful IDs here from your device manual
@@ -124,6 +124,7 @@ export function mapTelemetry(raw: any): TelemetryDTO {
     // Set default null values
     latitude: null,
     longitude: null,
+    latlng: null,
     timestamp: null,
     ignition: null,
     speed: null,
@@ -187,6 +188,7 @@ export function mapTelemetry(raw: any): TelemetryDTO {
     if (!isNaN(lat) && !isNaN(lng)) {
       mapped.latitude = lat;
       mapped.longitude = lng;
+      mapped.latlng = `${lat},${lng}`; // Store as a string for convenience
     }
   }
 

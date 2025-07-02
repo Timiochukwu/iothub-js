@@ -14,6 +14,8 @@ const AVL_ID_MAP = {
 import {
   FuelLevelHistoryPoint,
   DailyConsumptionPoint,
+  SpeedHistoryPoint,
+  DailySpeedReportPoint,
 } from "../types/AnalyticsDTO";
 import {
   TelemetryData,
@@ -149,6 +151,110 @@ export class TelemetryService {
         fuelLevel: rawFuelLevel / 1000,
       };
     });
+  }
+
+  public async getSpeedHistory(
+    imei: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<SpeedHistoryPoint[]> {
+    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+    const tsKey = "state.reported.ts";
+
+    const records = await Telemetry.find({
+      imei,
+      [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+      [speedKey]: { $exists: true },
+    })
+      .sort({ [tsKey]: 1 })
+      .select({ [tsKey]: 1, [speedKey]: 1 });
+
+    if (!records || records.length === 0) {
+      return [];
+    }
+
+    return records.map((doc: any) => {
+      const reported = doc.state.reported;
+      const timestamp =
+        typeof reported.ts === "object" ? reported.ts.$numberLong : reported.ts;
+
+      return {
+        timestamp: new Date(Number(timestamp)).getTime(),
+        speed: reported[AVL_ID_MAP.SPEED],
+      };
+    });
+  }
+
+  public async getDailySpeedReport(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    speedLimitKph: number = 120
+  ): Promise<DailySpeedReportPoint[]> {
+    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+    const tsKey = "state.reported.ts";
+
+    const results = await Telemetry.aggregate([
+      // 1. Filter for the right device, time range, and data presence
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [speedKey]: { $exists: true, $type: "number" },
+        },
+      },
+      // 2. Group by day and collect all speeds for that day into an array
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: { $toDate: `$${tsKey}` },
+            },
+          },
+          allSpeeds: { $push: `$${speedKey}` },
+        },
+      },
+      // 3. Project the final calculated fields from the 'allSpeeds' array
+      {
+        $project: {
+          _id: 0,
+          date: "$_id",
+          maxSpeed: { $max: "$allSpeeds" },
+          // Filter for moving speeds ( > 0 ) and then average them
+          averageMovingSpeed: {
+            $avg: {
+              $filter: {
+                input: "$allSpeeds",
+                as: "speed",
+                cond: { $gt: ["$$speed", 0] },
+              },
+            },
+          },
+          // Filter for speeding incidents and count them
+          speedingEventCount: {
+            $size: {
+              $filter: {
+                input: "$allSpeeds",
+                as: "speed",
+                cond: { $gt: ["$$speed", speedLimitKph] },
+              },
+            },
+          },
+        },
+      },
+      // 4. Sort the final results by date
+      { $sort: { date: 1 } },
+    ]);
+
+    // Clean up the numbers (rounding, handling nulls)
+    return results.map((r) => ({
+      ...r,
+      maxSpeed: r.maxSpeed ? parseFloat(r.maxSpeed.toFixed(2)) : 0,
+      averageMovingSpeed: r.averageMovingSpeed
+        ? parseFloat(r.averageMovingSpeed.toFixed(2))
+        : null,
+    }));
   }
 
   public async getDailyFuelConsumption(

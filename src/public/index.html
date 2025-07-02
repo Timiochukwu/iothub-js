@@ -195,6 +195,8 @@
         </div>
         <button id="getDailyFuelHistory">Get Daily Fuel History</button>
 
+        <button id="getDailySpeedHistory">Get Daily Speed History</button>
+
         <p>
           Status:
           <span id="watcherStatus" class="status disconnected"
@@ -344,6 +346,10 @@
         watcherSocket.on("real_time_telemetry", (data) =>
           log("Watcher: Received polled telemetry data.", "poll", data)
         );
+
+        watcherSocket.on("error", (error) => {
+          log("Watcher: Received an error!", "error", error);
+        });
       });
 
       // connectWatcherBtn.addEventListener("click", () => {
@@ -423,6 +429,45 @@
         "getDailyFuelHistory"
       );
 
+      const getDailySpeedHistoryBtn = document.getElementById(
+        "getDailySpeedHistory"
+      );
+
+      if (getDailySpeedHistoryBtn) {
+        getDailySpeedHistoryBtn.addEventListener("click", () => {
+          const startDateInput = document.getElementById("startDate");
+          const endDateInput = document.getElementById("endDate");
+          const token = jwtTokenInput.value.trim();
+
+          const imei = imeiInput.value.trim();
+          const startDate = startDateInput.value.trim();
+          const endDate = endDateInput.value.trim();
+
+          if (!imei || !startDate || !endDate) {
+            log("Watcher: IMEI, startDate, and endDate are required.", "error");
+            return;
+          }
+
+          watcherSocket = io(serverUrlInput.value, {
+            auth: { token: token },
+          });
+
+          watcherSocket.emit("daily_speed_history", {
+            imei,
+            startDate,
+            endDate,
+          });
+
+          watcherSocket.on("daily_speed_history", (data) => {
+            log("Watcher: Received daily speed report.", "watcher", data);
+          });
+
+          watcherSocket.on("error", (error) => {
+            log("Watcher: Received an error!", "error", error);
+          });
+        });
+      }
+
       if (getDailyFuelHistoryBtn) {
         getDailyFuelHistoryBtn.addEventListener("click", () => {
           const startDateInput = document.getElementById("startDate");
@@ -449,6 +494,10 @@
 
           watcherSocket.on("fuel_daily_history", (data) => {
             log("Watcher: Received fuel daily history.", "watcher", data);
+          });
+
+          watcherSocket.on("error", (error) => {
+            log("Watcher: Received an error!", "error", error);
           });
         });
       }
