@@ -311,6 +311,22 @@ export class RealTimeService {
       socket.emit("device_subscribed", {
         message: `Successfully subscribed to updates for IMEI ${imei}.`,
       });
+
+      // send data first time
+      const telemetryData =
+        await this.telemetryService.getDeviceLatestTelemetry(imei);
+      if (telemetryData) {
+        const event: RealTimeTelemetryEvent = {
+          type: "telemetry_update",
+          imei,
+          timestamp: Date.now(),
+          data: telemetryData,
+        };
+        socket.emit("real_time_telemetry", event);
+        console.log(
+          `[Subscribe] 📡 Initial telemetry data sent for ${imei} to ${socket.id}.`
+        );
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Subscription failed";
