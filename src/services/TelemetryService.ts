@@ -1,5 +1,20 @@
 import { Telemetry, ITelemetry } from "../models/Telemetry";
 import { Device } from "../models/Device";
+
+const AVL_ID_MAP = {
+  FUEL_LEVEL: "66",
+  TOTAL_ODOMETER: "241",
+  EVENT_IO_ID: "evt",
+  // Add other useful IDs here from your device manual
+  IGNITION: "239",
+  EXTERNAL_VOLTAGE: "67",
+  SPEED: "37",
+};
+
+import {
+  FuelLevelHistoryPoint,
+  DailyConsumptionPoint,
+} from "../types/AnalyticsDTO";
 import {
   TelemetryData,
   TelemetryPayload,
@@ -96,6 +111,140 @@ export class TelemetryService {
     } catch (error) {
       throw new CustomError("Failed to fetch latest telemetry for device", 500);
     }
+  }
+
+  public async getFuelLevelHistory(
+    imei: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<FuelLevelHistoryPoint[]> {
+    const fuelLevelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+
+    // Find all telemetry records in the range that have a fuel level value
+    const records = await Telemetry.find({
+      imei,
+      "state.reported.ts": {
+        $gte: startDate.getTime(),
+        $lte: endDate.getTime(),
+      },
+      [fuelLevelKey]: { $exists: true }, // Only get records where fuel data is present
+    })
+      .sort({ "state.reported.ts": 1 }) // Ensure chronological order
+      .select({ "state.reported.ts": 1, [fuelLevelKey]: 1 }); // Optimize by fetching only needed fields
+
+    if (!records || records.length === 0) {
+      return [];
+    }
+
+    // Map the raw DB documents to our clean DTO
+    return records.map((doc: any) => {
+      const reported = doc?.state?.reported;
+      const timestamp =
+        typeof reported.ts === "object" ? reported.ts.$numberLong : reported.ts;
+      const rawFuelLevel = reported[AVL_ID_MAP.FUEL_LEVEL];
+
+      return {
+        timestamp: new Date(Number(timestamp)).getTime(),
+        // Assuming the value is in milliliters, convert to liters. Adjust if needed.
+        fuelLevel: rawFuelLevel / 1000,
+      };
+    });
+  }
+
+  public async getDailyFuelConsumption(
+    imei: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<DailyConsumptionPoint[]> {
+    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+    const odoKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
+    const tsKey = "state.reported.ts";
+
+    const results = await Telemetry.aggregate([
+      // 1. Filter for the right device, time range, and for records that have the necessary data
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [fuelKey]: { $exists: true },
+          [odoKey]: { $exists: true },
+        },
+      },
+      // 2. Sort by time to get first/last values correctly
+      { $sort: { [tsKey]: 1 } },
+      // 3. Group by the day
+      {
+        $group: {
+          _id: {
+            // Grouping key
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: { $toDate: `$${tsKey}` },
+            },
+          },
+          // Get the first and last values for fuel and odometer for each day
+          firstFuel: { $first: `$${fuelKey}` },
+          lastFuel: { $last: `$${fuelKey}` },
+          firstOdo: { $first: `$${odoKey}` },
+          lastOdo: { $last: `$${odoKey}` },
+        },
+      },
+      // 4. Calculate the consumption for each day
+      {
+        $project: {
+          _id: 0, // Exclude the default _id field
+          date: "$_id",
+          distanceTraveledMeters: { $subtract: ["$lastOdo", "$firstOdo"] },
+          // Convert from ml to Liters
+          fuelConsumedLiters: {
+            $divide: [{ $subtract: ["$firstFuel", "$lastFuel"] }, 1000],
+          },
+        },
+      },
+      // 5. Final calculations and formatting
+      {
+        $project: {
+          date: 1,
+          fuelConsumedLiters: 1,
+          distanceTraveledKm: { $divide: ["$distanceTraveledMeters", 1000] },
+          // Calculate L/100km, with checks to prevent division by zero or invalid data
+          litersPer100Km: {
+            $cond: {
+              if: {
+                $and: [
+                  { $gt: ["$distanceTraveledMeters", 0] },
+                  { $gt: ["$fuelConsumedLiters", 0] },
+                ],
+              },
+              then: {
+                $multiply: [
+                  {
+                    $divide: [
+                      "$fuelConsumedLiters",
+                      { $divide: ["$distanceTraveledMeters", 1000] },
+                    ],
+                  },
+                  100,
+                ],
+              },
+              else: null, // Return null if no distance or if refueling happened
+            },
+          },
+        },
+      },
+      // 6. Sort the final results by date
+      { $sort: { date: 1 } },
+    ]);
+
+    // Round the numbers for cleaner output
+    return results.map((r) => ({
+      ...r,
+      litersPer100Km: r.litersPer100Km
+        ? parseFloat(r.litersPer100Km.toFixed(2))
+        : null,
+      distanceTraveledKm: parseFloat(r.distanceTraveledKm.toFixed(2)),
+      fuelConsumedLiters: parseFloat(r.fuelConsumedLiters.toFixed(2)),
+    }));
   }
 
   async getTelemetryForUser(email: string): Promise<TelemetryData[]> {

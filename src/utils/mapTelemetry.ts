@@ -2,6 +2,30 @@
 
 import { TelemetryDTO } from "../types/TelemetryDTO";
 
+const AVL_ID_MAP = {
+  FUEL_LEVEL: "66",
+  TOTAL_ODOMETER: "241",
+  EVENT_IO_ID: "evt",
+  // Add other useful IDs here from your device manual
+  IGNITION: "239",
+  EXTERNAL_VOLTAGE: "67",
+  SPEED: "37",
+};
+
+/**
+ * Maps specific Event IO ID values to their meaning.
+ * Again, VERIFY these with your device documentation.
+ */
+const EVENT_CODE_MAP = {
+  NO_EVENT: 0,
+  IGNITION_ON: 1,
+  IGNITION_OFF: 2,
+  HARSH_BRAKING: 247,
+  HARSH_ACCELERATION: 248,
+  HARSH_CORNERING: 249,
+  CRASH_DETECTION: 253, // This is the one we'll use for collision
+};
+
 // src/utils/telemetryCodeMap.ts
 
 /**
@@ -13,7 +37,7 @@ const telemetryCodeMap: { [key: string]: keyof TelemetryDTO | string } = {
   "36": "engineRpm",
   "48": "fuelLevel",
   "239": "ignition", // Will be converted to boolean
-  sp: "speed",
+  // sp: "speed",
 
   // Health and Environment
   "32": "coolantTemperature",
@@ -38,7 +62,7 @@ const telemetryCodeMap: { [key: string]: keyof TelemetryDTO | string } = {
   "30": "dtcCount",
   "31": "engineLoad",
   "33": "shortFuelTrim",
-  "37": "vehicleSpeedObd", // Note: 'sp' is likely the primary GPS speed
+  "37": "speed", // Note: 'sp' is likely the primary GPS speed
   "38": "timingAdvance",
   "39": "intakeAirTemperature",
   "42": "runtimeSinceEngineStart",
@@ -89,6 +113,7 @@ function parseValue(value: any): number | string | any {
  * @param raw The raw document from MongoDB Change Stream or a Mongoose query.
  * @returns A formatted TelemetryDTO object.
  */
+
 export function mapTelemetry(raw: any): TelemetryDTO {
   // Ensure we are working with a plain JavaScript object
   const plainRaw = raw.toObject ? raw.toObject() : raw;
@@ -123,6 +148,33 @@ export function mapTelemetry(raw: any): TelemetryDTO {
   mapped.id = plainRaw._id?.toString();
   mapped.imei = plainRaw.imei;
 
+  const rawFuelLevel = reported[AVL_ID_MAP.FUEL_LEVEL];
+  if (rawFuelLevel !== undefined && rawFuelLevel !== null) {
+    // Assumption: The value is in milliliters. We convert to liters.
+    // YOU MUST CONFIRM THIS UNIT. It could also be a percentage (0-100) or voltage.
+    mapped.fuel = {
+      level: rawFuelLevel / 1000, // e.g., 12940 -> 12.94
+      unit: "liters",
+    };
+  }
+
+  const rawOdometer = reported[AVL_ID_MAP.TOTAL_ODOMETER];
+  if (rawOdometer !== undefined) {
+    mapped.odometer = {
+      value: rawOdometer,
+      unit: "meters",
+    };
+  }
+
+  const eventCode = reported[AVL_ID_MAP.EVENT_IO_ID];
+  if (eventCode === EVENT_CODE_MAP.CRASH_DETECTION) {
+    // A crash event was specifically reported in this packet!
+    mapped.collision = {
+      detected: true,
+      timestamp: mapped.timestamp,
+      severity: "High", // You could have different severities for different event codes
+    };
+  }
   // Handle timestamp (ts)
   if (reported.ts?.$numberLong) {
     mapped.timestamp = Number(reported.ts.$numberLong);
@@ -150,8 +202,9 @@ export function mapTelemetry(raw: any): TelemetryDTO {
   // --- 3. Perform final transformations and calculations ---
 
   // Convert ignition (1/0) to boolean
-  if (mapped.ignition === 1 || mapped.ignition === 0) {
-    mapped.ignition = mapped.ignition === 1;
+  const ignitionStatus = reported[AVL_ID_MAP.IGNITION];
+  if (ignitionStatus !== undefined) {
+    mapped.ignition = ignitionStatus === 1;
   }
 
   // Calculate battery percentage from voltage

@@ -17,6 +17,12 @@ import { JwtUtils } from "../utils/jwt";
 import { mapTelemetry } from "../utils/mapTelemetry";
 import { TelemetryDTO } from "../types/TelemetryDTO";
 
+interface HistoryPayload {
+  imei: string;
+  startDate: string;
+  endDate: string;
+}
+
 // 🟢 NEW: Define the structure of the JWT payload for type safety.
 interface UserJWTPayload extends jwt.JwtPayload {
   // id: string; // User's MongoDB _id
@@ -93,6 +99,14 @@ export class RealTimeService {
       );
       socket.on("disconnect", (reason) =>
         this.handleDisconnection(socket, reason)
+      );
+
+      socket.on("fuel_level_history", (data: HistoryPayload) =>
+        this.handleGetFuelLevelHistory(socket, data)
+      );
+
+      socket.on("fuel_daily_history", (data: HistoryPayload) =>
+        this.handleGetFuelDailyHistory(socket, data)
       );
     });
   }
@@ -431,6 +445,78 @@ export class RealTimeService {
         `[Telemetry Ingest] ❌ Error processing telemetry for ${imei}:`,
         error
       );
+    }
+  }
+
+  private async handleGetFuelLevelHistory(
+    socket: Socket<any, any, any, SocketData>,
+    data: HistoryPayload
+  ): Promise<void> {
+    try {
+      const { imei, startDate, endDate } = data;
+      const user = socket.data.user;
+
+      // Standard security checks
+      if (!user) throw new CustomError("Authentication required.", 401);
+      if (!imei || !startDate || !endDate)
+        throw new CustomError(
+          "IMEI, startDate, and endDate are required.",
+          400
+        );
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const device = await Device.findOne({ imei, user: user.userId });
+      if (!device)
+        throw new CustomError(`Access denied to device ${imei}.`, 403);
+
+      console.log(
+        `[History] 📈 User '${user.email}' requested fuel level history for ${imei}`
+      );
+      const history = await this.telemetryService.getFuelLevelHistory(
+        imei,
+        start,
+        end
+      );
+
+      socket.emit("fuel_level_history_result", { imei, history });
+    } catch (error) {
+      // ... standard error handling
+    }
+  }
+
+  public async handleGetFuelDailyHistory(
+    socket: Socket<any, any, any, SocketData>,
+    data: HistoryPayload
+  ): Promise<void> {
+    try {
+      const { imei, startDate, endDate } = data;
+      const user = socket.data.user;
+
+      // Standard security checks
+      if (!user) throw new CustomError("Authentication required.", 401);
+      if (!imei || !startDate || !endDate)
+        throw new CustomError(
+          "IMEI, startDate, and endDate are required.",
+          400
+        );
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const device = await Device.findOne({ imei, user: user.userId });
+      if (!device)
+        throw new CustomError(`Access denied to device ${imei}.`, 403);
+
+      console.log(
+        `[History] 📈 User '${user.email}' requested fuel daily history for ${imei}`
+      );
+      const history = await this.telemetryService.getDailyFuelConsumption(
+        imei,
+        start,
+        end
+      );
+
+      socket.emit("fuel_daily_history", { imei, history });
+    } catch (error) {
+      // ... standard error handling
     }
   }
 

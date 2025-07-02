@@ -29,6 +29,7 @@ export interface TelemetryDTO {
   timestamp: number | null;
   latitude: number | null;
   longitude: number | null;
+  latlng: string | null; // Combined latitude and longitude as a string
 
   // Key vehicle stats
   ignition: any | null;
@@ -36,6 +37,11 @@ export interface TelemetryDTO {
   totalOdometer: number | null; // From '16'
   engineRpm: number | null; // From '36'
   fuelLevel: number | null; // From '48'
+
+  fuel?: FuelInfo;
+  collision?: CollisionInfo;
+  odometer?: OdometerInfo;
+  ignition?: boolean;
 
   // Health and environment
   batteryVoltage: number | null; // From '67', raw value in millivolts
