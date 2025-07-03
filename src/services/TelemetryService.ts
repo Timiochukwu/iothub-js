@@ -1,17 +1,85 @@
 import { Telemetry, ITelemetry } from "../models/Telemetry";
 import { Device } from "../models/Device";
-import { CollisionDetectionService, CollisionAlert, CollisionEvent } from "./CollisionDetectionService";
-
+import {
+  CollisionDetectionService,
+  CollisionAlert,
+  CollisionEvent,
+} from "./CollisionDetectionService";
 
 const AVL_ID_MAP = {
   FUEL_LEVEL: "66",
   TOTAL_ODOMETER: "241",
   EVENT_IO_ID: "evt",
-  // Add other useful IDs here from your device manual
   IGNITION: "239",
   EXTERNAL_VOLTAGE: "67",
   SPEED: "37",
+  TIMESTAMP: "ts",
+  RPM: "36",
 };
+
+export interface ReportOptions {
+  speedLimitKph: number;
+  rapidAccelKph: number; // Speed increase threshold
+  rapidAccelSeconds: number; // Time window for acceleration
+  rapidDecelKph: number; // Speed decrease threshold
+  rapidDecelSeconds: number; // Time window for deceleration
+}
+
+/**
+ * The output structure for the main analytics summary.
+ * This matches the "May Details" card in your UI.
+ */
+export interface AnalyticsSummary {
+  totalDistanceKm: number;
+  totalDrivingTimeSeconds: number;
+  maxSpeedKph: number;
+  averageMovingSpeedKph: number;
+  averageRpm: number;
+  speedingCount: number;
+  speedingDistanceKm: number;
+  rapidAccelCount: number;
+  rapidDecelCount: number;
+}
+
+export interface DrivingSummary {
+  totalDistanceKm: number;
+  totalDrivingTimeSeconds: number;
+  maxSpeedKph: number;
+  averageMovingSpeedKph: number;
+  averageRpm: number;
+  speedingCount: number;
+  speedingDistanceKm: number;
+  rapidAccelCount: number;
+  rapidDecelCount: number;
+}
+
+// This interface represents the summary of fuel consumption for a period.
+export interface FuelSummary {
+  totalFuelConsumedLiters: number;
+  totalDistanceKm: number;
+  mileageKmL: number;
+}
+
+// This is the final, combined data structure for each point in the report.
+export interface CombinedAnalyticsPoint {
+  label: string;
+  driving_data: DrivingSummary | null;
+  fuel_data: FuelSummary | null;
+}
+
+/**
+ * The grouping type for chart data.
+ */
+export type ChartGroupingType = "daily" | "weekly" | "monthly";
+
+/**
+ * A single data point for the speed chart.
+ */
+export interface SpeedChartPoint {
+  label: string; // e.g., "2023-05-26", "Week 21", "2023-05"
+  maxSpeed: number;
+  averageSpeed: number;
+}
 
 import {
   FuelLevelHistoryPoint,
@@ -80,33 +148,41 @@ export class TelemetryService {
       const telemetry = new Telemetry(telemetryData);
       await telemetry.save();
 
-       // Check for collision events
-       const collisionAlert = await this.collisionDetectionService.analyzeForCollision(payload.payload);
-      
+      // Check for collision events
+      const collisionAlert =
+        await this.collisionDetectionService.analyzeForCollision(
+          payload.payload
+        );
 
       return {
         success: true,
         message: "Telemetry data ingested successfully",
-        data: { id: telemetry._id!.toString(),
-        collisionAlert
-        },
-        
+        data: { id: telemetry._id!.toString(), collisionAlert },
       };
     } catch (error) {
       throw new CustomError("Failed to ingest telemetry data", 500);
     }
   }
   // Get collision history for a device
-  async getCollisionHistory(imei: string, limit: number = 10): Promise<CollisionEvent[]> {
+  async getCollisionHistory(
+    imei: string,
+    limit: number = 10
+  ): Promise<CollisionEvent[]> {
     try {
-      return await this.collisionDetectionService.getRecentCollisions(imei, limit);
+      return await this.collisionDetectionService.getRecentCollisions(
+        imei,
+        limit
+      );
     } catch (error) {
       throw new CustomError("Failed to fetch collision history", 500);
     }
   }
 
   // 🟢 NEW: Get collision statistics
-  async getCollisionStatistics(imei: string, days: number = 30): Promise<{
+  async getCollisionStatistics(
+    imei: string,
+    days: number = 30
+  ): Promise<{
     total: number;
     byDay: Array<{ date: string; count: number }>;
     bySeverity: { minor: number; moderate: number; severe: number };
@@ -120,13 +196,18 @@ export class TelemetryService {
 
   // 🟢 NEW: Update collision status
   async updateCollisionStatus(
-    imei: string, 
-    collisionId: string, 
-    status: 'confirmed' | 'false_alarm',
+    imei: string,
+    collisionId: string,
+    status: "confirmed" | "false_alarm",
     responseTime?: number
   ): Promise<void> {
     try {
-      await this.collisionDetectionService.updateCollisionStatus(imei, collisionId, status, responseTime);
+      await this.collisionDetectionService.updateCollisionStatus(
+        imei,
+        collisionId,
+        status,
+        responseTime
+      );
     } catch (error) {
       throw new CustomError("Failed to update collision status", 500);
     }
@@ -148,32 +229,32 @@ export class TelemetryService {
         message,
         severity,
         formattedTimestamp: this.formatTimestamp(latest.timestamp),
-        requiresAction: severity === 'severe' || severity === 'moderate'
+        requiresAction: severity === "severe" || severity === "moderate",
       };
     } catch (error) {
       throw new CustomError("Failed to fetch crash detection data", 500);
     }
   }
 
-  private getCrashSeverity(crashDetection: number | undefined): 'none' | 'minor' | 'moderate' | 'severe' {
-    if (!crashDetection || crashDetection === 0) return 'none';
+  private getCrashSeverity(
+    crashDetection: number | undefined
+  ): "none" | "minor" | "moderate" | "severe" {
+    if (!crashDetection || crashDetection === 0) return "none";
 
     switch (crashDetection) {
       case 1:
       case 6:
-        return 'severe'; // Real crash detected
+        return "severe"; // Real crash detected
       case 4:
       case 5:
-        return 'moderate'; // Full crash trace
+        return "moderate"; // Full crash trace
       case 2:
       case 3:
-        return 'minor'; // Limited crash trace
+        return "minor"; // Limited crash trace
       default:
-        return 'minor';
+        return "minor";
     }
   }
-
-
 
   async getAllTelemetry(): Promise<TelemetryData[]> {
     try {
@@ -267,7 +348,7 @@ export class TelemetryService {
     }
 
     return records.map((doc: any) => {
-      const reported = doc.state.reported;
+      const reported = doc.state?.reported || {};
       const timestamp =
         typeof reported.ts === "object" ? reported.ts.$numberLong : reported.ts;
 
@@ -619,8 +700,6 @@ export class TelemetryService {
     }
   }
 
-
-
   async getLatestEngineLoad(): Promise<EngineLoadDTO | null> {
     try {
       const latest = await this.getLatestTelemetry();
@@ -863,5 +942,879 @@ export class TelemetryService {
     if (engineRpm < 600) return "Idle";
     if (engineRpm > 4000) return "High Load";
     return "Normal";
+  }
+
+  public async getAnalyticsSummary(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    options: ReportOptions
+  ): Promise<AnalyticsSummary | null> {
+    const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
+    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+    const rpmKey = `state.reported.${AVL_ID_MAP.RPM}`;
+
+    const pipeline: any[] = [
+      // 1. Filter for the specific device, time range, and where speed data exists.
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [speedKey]: { $exists: true, $type: "number" },
+        },
+      },
+      // 2. Sort documents by timestamp. This is CRITICAL for window functions.
+      {
+        $sort: { [tsKey]: 1 },
+      },
+      // 3. Use $setWindowFields to get the PREVIOUS speed and timestamp.
+      // This lets us calculate deltas (change in time, speed, distance).
+      {
+        $setWindowFields: {
+          partitionBy: "$imei",
+          sortBy: { [tsKey]: 1 },
+          output: {
+            previousSpeed: {
+              $shift: { output: `$${speedKey}`, by: -1, default: null },
+            },
+            previousTimestamp: {
+              $shift: { output: `$${tsKey}`, by: -1, default: null },
+            },
+          },
+        },
+      },
+      // 4. Calculate metrics for EACH telemetry point based on its previous point.
+      {
+        $addFields: {
+          // Only perform calculations if we have a previous point
+          timeDeltaSeconds: {
+            $cond: {
+              if: { $ne: ["$previousTimestamp", null] },
+              then: {
+                $divide: [
+                  { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+                  1000,
+                ],
+              },
+              else: 0,
+            },
+          },
+          speedDeltaKph: {
+            $cond: {
+              if: { $ne: ["$previousSpeed", null] },
+              then: { $subtract: [`$${speedKey}`, "$previousSpeed"] },
+              else: 0,
+            },
+          },
+          // Distance for this segment using trapezoidal rule (more accurate)
+          // Formula: avg_speed * time_delta
+          distanceDeltaKm: {
+            $cond: {
+              if: { $ne: ["$previousTimestamp", null] },
+              then: {
+                $multiply: [
+                  {
+                    $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
+                  }, // Avg Speed in km/h
+                  {
+                    $divide: [
+                      // Time in hours
+                      { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+                      3600000, // ms in an hour
+                    ],
+                  },
+                ],
+              },
+              else: 0,
+            },
+          },
+        },
+      },
+      // 5. Add boolean flags for different event types to make grouping easier.
+      {
+        $addFields: {
+          isMoving: { $gt: [`$${speedKey}`, 0] },
+          isSpeeding: { $gt: [`$${speedKey}`, options.speedLimitKph] },
+          isRapidAccel: {
+            $and: [
+              { $ne: ["$previousTimestamp", null] },
+              { $gt: ["$speedDeltaKph", options.rapidAccelKph] },
+              { $lte: ["$timeDeltaSeconds", options.rapidAccelSeconds] },
+            ],
+          },
+          isRapidDecel: {
+            $and: [
+              { $ne: ["$previousTimestamp", null] },
+              { $lt: ["$speedDeltaKph", -options.rapidDecelKph] }, // Note: negative delta
+              { $lte: ["$timeDeltaSeconds", options.rapidDecelSeconds] },
+            ],
+          },
+        },
+      },
+      // 6. Group all processed points into a single summary document.
+      {
+        $group: {
+          _id: null,
+          totalDistanceKm: { $sum: "$distanceDeltaKm" },
+          totalDrivingTimeSeconds: {
+            $sum: { $cond: ["$isMoving", "$timeDeltaSeconds", 0] },
+          },
+          maxSpeedKph: { $max: `$${speedKey}` },
+          // Collect moving speeds and RPMs to average them correctly
+          movingSpeeds: {
+            $push: { $cond: ["$isMoving", `$${speedKey}`, "$$REMOVE"] },
+          },
+          movingRpms: {
+            $push: { $cond: ["$isMoving", `$${rpmKey}`, "$$REMOVE"] },
+          },
+          speedingCount: { $sum: { $cond: ["$isSpeeding", 1, 0] } },
+          speedingDistanceKm: {
+            $sum: { $cond: ["$isSpeeding", "$distanceDeltaKm", 0] },
+          },
+          rapidAccelCount: { $sum: { $cond: ["$isRapidAccel", 1, 0] } },
+          rapidDecelCount: { $sum: { $cond: ["$isRapidDecel", 1, 0] } },
+        },
+      },
+      // 7. Project the final fields and perform final calculations.
+      {
+        $project: {
+          _id: 0,
+          totalDistanceKm: 1,
+          totalDrivingTimeSeconds: 1,
+          maxSpeedKph: 1,
+          averageMovingSpeedKph: { $avg: "$movingSpeeds" },
+          averageRpm: { $avg: "$movingRpms" },
+          speedingCount: 1,
+          speedingDistanceKm: 1,
+          rapidAccelCount: 1,
+          rapidDecelCount: 1,
+        },
+      },
+    ];
+
+    const results = await Telemetry.aggregate(pipeline);
+
+    if (!results || results.length === 0) {
+      return null; // No data found for the period
+    }
+
+    // Round the numbers for a clean output
+    const summary = results[0];
+    return {
+      totalDistanceKm: parseFloat(summary.totalDistanceKm?.toFixed(2) ?? 0),
+      totalDrivingTimeSeconds: Math.round(summary.totalDrivingTimeSeconds ?? 0),
+      maxSpeedKph: parseFloat(summary.maxSpeedKph?.toFixed(2) ?? 0),
+      averageMovingSpeedKph: parseFloat(
+        summary.averageMovingSpeedKph?.toFixed(2) ?? 0
+      ),
+      averageRpm: Math.round(summary.averageRpm ?? 0),
+      speedingCount: summary.speedingCount ?? 0,
+      speedingDistanceKm: parseFloat(
+        summary.speedingDistanceKm?.toFixed(2) ?? 0
+      ),
+      rapidAccelCount: summary.rapidAccelCount ?? 0,
+      rapidDecelCount: summary.rapidDecelCount ?? 0,
+    };
+  }
+
+  /**
+   * Generates time-series data for a speed chart, grouped by a specified period.
+   * This provides the data for the "Speed Report" chart in the UI.
+   *
+   * @param imei The device identifier.
+   * @param startDate The start of the reporting period.
+   * @param endDate The end of the reporting period.
+   * @param type The grouping period: 'daily', 'weekly', or 'monthly'.
+   * @returns A promise that resolves to an array of SpeedChartPoint objects.
+   */
+  public async getSpeedChartData(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType
+  ): Promise<SpeedChartPoint[]> {
+    const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
+    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+
+    let groupByFormat: string;
+    switch (type) {
+      case "weekly":
+        groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
+        break;
+      case "monthly":
+        groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
+        break;
+      case "daily":
+      default:
+        groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
+        break;
+    }
+
+    const results = await Telemetry.aggregate([
+      // 1. Filter for the right device, time range, and data presence
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [speedKey]: { $exists: true, $type: "number" },
+        },
+      },
+      // 2. Group by the specified date format
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: groupByFormat,
+              date: { $toDate: `$${tsKey}` },
+            },
+          },
+          maxSpeed: { $max: `$${speedKey}` },
+          // Filter for moving speeds (> 0) and then average them
+          averageSpeed: {
+            $avg: {
+              $cond: [{ $gt: [`$${speedKey}`, 0] }, `$${speedKey}`, null],
+            },
+          },
+        },
+      },
+      // 3. Project into the final format
+      {
+        $project: {
+          _id: 0,
+          label: "$_id",
+          maxSpeed: { $ifNull: ["$maxSpeed", 0] },
+          averageSpeed: { $ifNull: ["$averageSpeed", 0] },
+        },
+      },
+      // 4. Sort the final results by label
+      { $sort: { label: 1 } },
+    ]);
+
+    // Clean up the numbers
+    return results.map((r) => ({
+      ...r,
+      maxSpeed: parseFloat(r.maxSpeed.toFixed(2)),
+      averageSpeed: parseFloat(r.averageSpeed.toFixed(2)),
+    }));
+  }
+
+  // public async getDetailedSummary(
+  //   imei: string,
+  //   startDate: Date,
+  //   endDate: Date,
+  //   type: ChartGroupingType,
+  //   options: ReportOptions
+  // ): Promise<DetailedAnalyticsPoint[]> {
+  //   const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
+  //   const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+  //   const rpmKey = `state.reported.${AVL_ID_MAP.RPM}`;
+
+  //   let groupByFormat: string;
+  //   switch (type) {
+  //     case "weekly":
+  //       groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
+  //       break;
+  //     case "monthly":
+  //       groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
+  //       break;
+  //     case "daily":
+  //     default:
+  //       groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
+  //       break;
+  //   }
+
+  //   const pipeline: any[] = [
+  //     // Steps 1-5: Calculate deltas and flags for EACH telemetry point.
+  //     // This part is identical to the previous getAnalyticsSummary function.
+  //     {
+  //       $match: {
+  //         imei,
+  //         [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+  //         [speedKey]: { $exists: true, $type: "number" },
+  //       },
+  //     },
+  //     { $sort: { [tsKey]: 1 } },
+  //     {
+  //       $setWindowFields: {
+  //         partitionBy: "$imei",
+  //         sortBy: { [tsKey]: 1 },
+  //         output: {
+  //           previousSpeed: {
+  //             $shift: { output: `$${speedKey}`, by: -1, default: null },
+  //           },
+  //           previousTimestamp: {
+  //             $shift: { output: `$${tsKey}`, by: -1, default: null },
+  //           },
+  //         },
+  //       },
+  //     },
+  //     {
+  //       $addFields: {
+  //         timeDeltaSeconds: {
+  //           $cond: {
+  //             if: { $ne: ["$previousTimestamp", null] },
+  //             then: {
+  //               $divide: [
+  //                 { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+  //                 1000,
+  //               ],
+  //             },
+  //             else: 0,
+  //           },
+  //         },
+  //         speedDeltaKph: {
+  //           $cond: {
+  //             if: { $ne: ["$previousSpeed", null] },
+  //             then: { $subtract: [`$${speedKey}`, "$previousSpeed"] },
+  //             else: 0,
+  //           },
+  //         },
+  //         distanceDeltaKm: {
+  //           $cond: {
+  //             if: { $ne: ["$previousTimestamp", null] },
+  //             then: {
+  //               $multiply: [
+  //                 {
+  //                   $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
+  //                 },
+  //                 {
+  //                   $divide: [
+  //                     { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+  //                     3600000,
+  //                   ],
+  //                 },
+  //               ],
+  //             },
+  //             else: 0,
+  //           },
+  //         },
+  //       },
+  //     },
+  //     {
+  //       $addFields: {
+  //         isMoving: { $gt: [`$${speedKey}`, 0] },
+  //         isSpeeding: { $gt: [`$${speedKey}`, options.speedLimitKph] },
+  //         isRapidAccel: {
+  //           $and: [
+  //             { $ne: ["$previousTimestamp", null] },
+  //             { $gt: ["$speedDeltaKph", options.rapidAccelKph] },
+  //             { $lte: ["$timeDeltaSeconds", options.rapidAccelSeconds] },
+  //           ],
+  //         },
+  //         isRapidDecel: {
+  //           $and: [
+  //             { $ne: ["$previousTimestamp", null] },
+  //             { $lt: ["$speedDeltaKph", -options.rapidDecelKph] },
+  //             { $lte: ["$timeDeltaSeconds", options.rapidDecelSeconds] },
+  //           ],
+  //         },
+  //       },
+  //     },
+
+  //     // --- CRITICAL CHANGE HERE ---
+  //     // 6. Group all points into BUCKETS (daily, weekly, or monthly) and calculate summaries for each bucket.
+  //     {
+  //       $group: {
+  //         // Group by the selected date format instead of _id: null
+  //         _id: {
+  //           $dateToString: {
+  //             format: groupByFormat,
+  //             date: { $toDate: `$${tsKey}` },
+  //             timezone: "UTC", // Specify timezone to avoid inconsistencies
+  //           },
+  //         },
+  //         // The summary calculations are the same, but now they apply per-group.
+  //         totalDistanceKm: { $sum: "$distanceDeltaKm" },
+  //         totalDrivingTimeSeconds: {
+  //           $sum: { $cond: ["$isMoving", "$timeDeltaSeconds", 0] },
+  //         },
+  //         maxSpeedKph: { $max: `$${speedKey}` },
+  //         movingSpeeds: {
+  //           $push: { $cond: ["$isMoving", `$${speedKey}`, "$$REMOVE"] },
+  //         },
+  //         movingRpms: {
+  //           $push: { $cond: ["$isMoving", `$${rpmKey}`, "$$REMOVE"] },
+  //         },
+  //         speedingCount: { $sum: { $cond: ["$isSpeeding", 1, 0] } },
+  //         speedingDistanceKm: {
+  //           $sum: { $cond: ["$isSpeeding", "$distanceDeltaKm", 0] },
+  //         },
+  //         rapidAccelCount: { $sum: { $cond: ["$isRapidAccel", 1, 0] } },
+  //         rapidDecelCount: { $sum: { $cond: ["$isRapidDecel", 1, 0] } },
+  //       },
+  //     },
+
+  //     // 7. Project into the final desired shape for the API.
+  //     {
+  //       $project: {
+  //         _id: 0,
+  //         label: "$_id", // The date/week/month string
+  //         summary: {
+  //           // Nest all the details into a summary object
+  //           totalDistanceKm: "$totalDistanceKm",
+  //           totalDrivingTimeSeconds: "$totalDrivingTimeSeconds",
+  //           maxSpeedKph: "$maxSpeedKph",
+  //           averageMovingSpeedKph: { $avg: "$movingSpeeds" },
+  //           averageRpm: { $avg: "$movingRpms" },
+  //           speedingCount: "$speedingCount",
+  //           speedingDistanceKm: "$speedingDistanceKm",
+  //           rapidAccelCount: "$rapidAccelCount",
+  //           rapidDecelCount: "$rapidDecelCount",
+  //         },
+  //       },
+  //     },
+  //     // 8. Sort the final report by the label (date/week/month).
+  //     { $sort: { label: 1 } },
+  //   ];
+
+  //   const results = await Telemetry.aggregate(pipeline);
+
+  //   if (!results || results.length === 0) {
+  //     return []; // Return an empty array if no data
+  //   }
+
+  //   // Clean up numbers for each point in the report
+  //   return results.map((point) => ({
+  //     label: point.label,
+  //     summary: {
+  //       totalDistanceKm: parseFloat(
+  //         point.summary.totalDistanceKm?.toFixed(2) ?? 0
+  //       ),
+  //       totalDrivingTimeSeconds: Math.round(
+  //         point.summary.totalDrivingTimeSeconds ?? 0
+  //       ),
+  //       maxSpeedKph: parseFloat(point.summary.maxSpeedKph?.toFixed(2) ?? 0),
+  //       averageMovingSpeedKph: parseFloat(
+  //         point.summary.averageMovingSpeedKph?.toFixed(2) ?? 0
+  //       ),
+  //       averageRpm: Math.round(point.summary.averageRpm ?? 0),
+  //       speedingCount: point.summary.speedingCount ?? 0,
+  //       speedingDistanceKm: parseFloat(
+  //         point.summary.speedingDistanceKm?.toFixed(2) ?? 0
+  //       ),
+  //       rapidAccelCount: point.summary.rapidAccelCount ?? 0,
+  //       rapidDecelCount: point.summary.rapidDecelCount ?? 0,
+  //     },
+  //   }));
+  // }
+
+  public async getCombinedAnalyticsReport(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType,
+    options: ReportOptions
+  ): Promise<CombinedAnalyticsPoint[]> {
+    // 1. Fetch both reports in parallel for maximum efficiency
+    const [drivingReportMap, fuelReportMap] = await Promise.all([
+      this._getDrivingBehaviorReport(imei, startDate, endDate, type, options),
+      this._getFuelAnalyticsReport(imei, startDate, endDate, type),
+    ]);
+
+    // 2. Merge the two reports using their labels (dates/weeks/months) as keys
+    const combinedReport = new Map<string, CombinedAnalyticsPoint>();
+
+    // Add driving data to the map
+    for (const [label, summary] of drivingReportMap.entries()) {
+      combinedReport.set(label, {
+        label,
+        driving_data: summary,
+        fuel_data: null,
+      });
+    }
+
+    // Add/merge fuel data into the map
+    for (const [label, summary] of fuelReportMap.entries()) {
+      const existingEntry = combinedReport.get(label);
+      if (existingEntry) {
+        existingEntry.fuel_data = summary;
+      } else {
+        // This day has fuel data but no driving data (edge case)
+        combinedReport.set(label, {
+          label,
+          driving_data: null,
+          fuel_data: summary,
+        });
+      }
+    }
+
+    // 3. Convert the map back to a sorted array for the final response
+    const finalReport = Array.from(combinedReport.values());
+    finalReport.sort((a, b) => a.label.localeCompare(b.label));
+
+    return finalReport;
+  }
+
+  // ===================================================================
+  // MODULAR HELPER FUNCTIONS (PRIVATE)
+  // ===================================================================
+
+  /**
+   * [PRIVATE] Generates a time-bucketed report for driving behavior.
+   * Returns a Map for easy merging.
+   */
+
+  private async _getDrivingBehaviorReport(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType,
+    options: ReportOptions
+  ): Promise<Map<string, DrivingSummary>> {
+    // Define keys for telemetry fields for maintainability
+    const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
+    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+    const rpmKey = `state.reported.${AVL_ID_MAP.RPM}`;
+
+    // Determine the date format string for the grouping stage
+    let groupByFormat: string;
+    switch (type) {
+      case "weekly":
+        groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
+        break;
+      case "monthly":
+        groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
+        break;
+      case "daily":
+      default:
+        groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
+        break;
+    }
+
+    const pipeline: any[] = [
+      // STAGE 1: Filter for the specific device, time range, and necessary data.
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [speedKey]: { $exists: true, $type: "number" },
+        },
+      },
+
+      // STAGE 2: Sort documents by timestamp. This is CRITICAL for the next stage.
+      { $sort: { [tsKey]: 1 } },
+
+      // STAGE 3: Use $setWindowFields to get the PREVIOUS speed and timestamp.
+      // This allows us to calculate deltas between consecutive points.
+      {
+        $setWindowFields: {
+          partitionBy: "$imei",
+          sortBy: { [tsKey]: 1 },
+          output: {
+            previousSpeed: {
+              $shift: { output: `$${speedKey}`, by: -1, default: null },
+            },
+            previousTimestamp: {
+              $shift: { output: `$${tsKey}`, by: -1, default: null },
+            },
+          },
+        },
+      },
+
+      // STAGE 4: Calculate metrics for EACH telemetry point based on its previous point.
+      {
+        $addFields: {
+          timeDeltaSeconds: {
+            $cond: {
+              if: { $ne: ["$previousTimestamp", null] },
+              then: {
+                $divide: [
+                  { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+                  1000,
+                ],
+              },
+              else: 0,
+            },
+          },
+          speedDeltaKph: {
+            $cond: {
+              if: { $ne: ["$previousSpeed", null] },
+              then: { $subtract: [`$${speedKey}`, "$previousSpeed"] },
+              else: 0,
+            },
+          },
+          // Calculate distance for this segment using average speed (Trapezoidal rule)
+          distanceDeltaKm: {
+            $cond: {
+              if: { $ne: ["$previousTimestamp", null] },
+              then: {
+                $multiply: [
+                  {
+                    $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
+                  }, // Avg Speed in km/h
+                  {
+                    $divide: [
+                      { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+                      3600000,
+                    ],
+                  }, // Time in hours
+                ],
+              },
+              else: 0,
+            },
+          },
+        },
+      },
+
+      // STAGE 5: Add boolean flags for different event types to simplify grouping.
+      {
+        $addFields: {
+          isMoving: { $gt: [`$${speedKey}`, 0] },
+          isSpeeding: { $gt: [`$${speedKey}`, options.speedLimitKph] },
+          isRapidAccel: {
+            $and: [
+              { $ne: ["$previousTimestamp", null] },
+              { $gt: ["$speedDeltaKph", options.rapidAccelKph] },
+              { $lte: ["$timeDeltaSeconds", options.rapidAccelSeconds] },
+            ],
+          },
+          isRapidDecel: {
+            $and: [
+              { $ne: ["$previousTimestamp", null] },
+              { $lt: ["$speedDeltaKph", -options.rapidDecelKph] }, // Note: negative delta
+              { $lte: ["$timeDeltaSeconds", options.rapidDecelSeconds] },
+            ],
+          },
+        },
+      },
+
+      // STAGE 6: Group all points into time BUCKETS and calculate summaries for each.
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: groupByFormat,
+              date: { $toDate: `$${tsKey}` },
+              timezone: "UTC",
+            },
+          },
+          totalDistanceKm: { $sum: "$distanceDeltaKm" },
+          totalDrivingTimeSeconds: {
+            $sum: { $cond: ["$isMoving", "$timeDeltaSeconds", 0] },
+          },
+          maxSpeedKph: { $max: `$${speedKey}` },
+          // Collect moving speeds/RPMs into arrays to average them correctly in the next stage
+          movingSpeeds: {
+            $push: { $cond: ["$isMoving", `$${speedKey}`, "$$REMOVE"] },
+          },
+          movingRpms: {
+            $push: { $cond: ["$isMoving", `$${rpmKey}`, "$$REMOVE"] },
+          },
+          speedingCount: { $sum: { $cond: ["$isSpeeding", 1, 0] } },
+          speedingDistanceKm: {
+            $sum: { $cond: ["$isSpeeding", "$distanceDeltaKm", 0] },
+          },
+          rapidAccelCount: { $sum: { $cond: ["$isRapidAccel", 1, 0] } },
+          rapidDecelCount: { $sum: { $cond: ["$isRapidDecel", 1, 0] } },
+        },
+      },
+
+      // STAGE 7: Project into the final shape, calculating averages from the arrays.
+      {
+        $project: {
+          _id: 0,
+          label: "$_id",
+          summary: {
+            totalDistanceKm: "$totalDistanceKm",
+            totalDrivingTimeSeconds: "$totalDrivingTimeSeconds",
+            maxSpeedKph: "$maxSpeedKph",
+            averageMovingSpeedKph: { $avg: "$movingSpeeds" },
+            averageRpm: { $avg: "$movingRpms" },
+            speedingCount: "$speedingCount",
+            speedingDistanceKm: "$speedingDistanceKm",
+            rapidAccelCount: "$rapidAccelCount",
+            rapidDecelCount: "$rapidDecelCount",
+          },
+        },
+      },
+
+      // STAGE 8: Sort the final report by the label (date/week/month).
+      { $sort: { label: 1 } },
+    ];
+
+    const results = await Telemetry.aggregate(pipeline);
+
+    // Map the results to the final Map<string, DrivingSummary> structure.
+    const reportMap = new Map<string, DrivingSummary>();
+
+    results.forEach((point) => {
+      const summary = point.summary;
+      reportMap.set(point.label, {
+        totalDistanceKm: parseFloat(summary.totalDistanceKm?.toFixed(2) ?? 0),
+        totalDrivingTimeSeconds: Math.round(
+          summary.totalDrivingTimeSeconds ?? 0
+        ),
+        maxSpeedKph: parseFloat(summary.maxSpeedKph?.toFixed(2) ?? 0),
+        averageMovingSpeedKph: parseFloat(
+          summary.averageMovingSpeedKph?.toFixed(2) ?? 0
+        ),
+        averageRpm: Math.round(summary.averageRpm ?? 0),
+        speedingCount: summary.speedingCount ?? 0,
+        speedingDistanceKm: parseFloat(
+          summary.speedingDistanceKm?.toFixed(2) ?? 0
+        ),
+        rapidAccelCount: summary.rapidAccelCount ?? 0,
+        rapidDecelCount: summary.rapidDecelCount ?? 0,
+      });
+    });
+
+    return reportMap;
+  }
+
+  /**
+   * [PRIVATE] Generates a time-bucketed report for fuel consumption and mileage.
+   * Returns a Map for easy merging.
+   */
+  private async _getFuelAnalyticsReport(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType
+  ): Promise<Map<string, FuelSummary>> {
+    // Define keys for telemetry fields
+    const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
+    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+
+    // Determine the date format string for the grouping stage
+    let groupByFormat: string;
+    switch (type) {
+      case "weekly":
+        groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
+        break;
+      case "monthly":
+        groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
+        break;
+      case "daily":
+      default:
+        groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
+        break;
+    }
+
+    const pipeline: any[] = [
+      // STAGE 1: Filter for the device, time range, and essential data fields.
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [fuelKey]: { $exists: true, $type: "number" },
+          [speedKey]: { $exists: true, $type: "number" },
+        },
+      },
+
+      // STAGE 2: Sort documents by timestamp to process them in chronological order.
+      { $sort: { [tsKey]: 1 } },
+
+      // STAGE 3: Use $setWindowFields to get the PREVIOUS values for each field.
+      {
+        $setWindowFields: {
+          partitionBy: "$imei",
+          sortBy: { [tsKey]: 1 },
+          output: {
+            previousSpeed: {
+              $shift: { output: `$${speedKey}`, by: -1, default: null },
+            },
+            previousTimestamp: {
+              $shift: { output: `$${tsKey}`, by: -1, default: null },
+            },
+            previousFuel: {
+              $shift: { output: `$${fuelKey}`, by: -1, default: null },
+            },
+          },
+        },
+      },
+
+      // STAGE 4: Calculate deltas for distance and fuel for each segment.
+      {
+        $addFields: {
+          // Calculate distance for this segment using average speed.
+          distanceDeltaKm: {
+            $cond: {
+              if: { $ne: ["$previousTimestamp", null] },
+              then: {
+                $multiply: [
+                  {
+                    $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
+                  },
+                  {
+                    $divide: [
+                      { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+                      3600000,
+                    ],
+                  },
+                ],
+              },
+              else: 0,
+            },
+          },
+          // Calculate fuel consumption. Ignore refills (where fuel level increases).
+          // If (previousFuel - currentFuel) is negative, it's a refill, so consumption is 0.
+          fuelDeltaLiters: {
+            $cond: {
+              if: { $ne: ["$previousFuel", null] },
+              then: {
+                $max: [0, { $subtract: ["$previousFuel", `$${fuelKey}`] }],
+              },
+              else: 0,
+            },
+          },
+        },
+      },
+
+      // STAGE 5: Group the segments into time buckets (daily, weekly, monthly).
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: groupByFormat,
+              date: { $toDate: `$${tsKey}` },
+              timezone: "UTC",
+            },
+          },
+          totalFuelConsumedLiters: { $sum: "$fuelDeltaLiters" },
+          totalDistanceKm: { $sum: "$distanceDeltaKm" },
+        },
+      },
+
+      // STAGE 6: Project the final format and calculate mileage.
+      {
+        $project: {
+          _id: 0,
+          label: "$_id",
+          totalFuelConsumedLiters: 1,
+          totalDistanceKm: 1,
+          // Calculate mileage (km/L), handling division by zero.
+          mileageKmL: {
+            $cond: {
+              if: { $gt: ["$totalFuelConsumedLiters", 0] },
+              then: {
+                $divide: ["$totalDistanceKm", "$totalFuelConsumedLiters"],
+              },
+              else: 0,
+            },
+          },
+        },
+      },
+
+      // STAGE 7: Sort the final report by the label (date/week/month).
+      { $sort: { label: 1 } },
+    ];
+
+    const results = await Telemetry.aggregate(pipeline);
+
+    // Map the results to the final Map<string, FuelSummary> structure.
+    const reportMap = new Map<string, FuelSummary>();
+
+    results.forEach((point) => {
+      reportMap.set(point.label, {
+        totalFuelConsumedLiters: parseFloat(
+          point.totalFuelConsumedLiters?.toFixed(2) ?? 0
+        ),
+        totalDistanceKm: parseFloat(point.totalDistanceKm?.toFixed(2) ?? 0),
+        mileageKmL: parseFloat(point.mileageKmL?.toFixed(2) ?? 0),
+      });
+    });
+
+    return reportMap;
   }
 }

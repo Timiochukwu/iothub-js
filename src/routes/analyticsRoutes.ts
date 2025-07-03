@@ -5,9 +5,9 @@ import analyticsController from "../controllers/analyticsController";
 const router = Router();
 
 router.get(
-  "/speed/:imei",
+  "/:imei",
   authenticateToken,
-  analyticsController.getSpeedHistory
+  analyticsController.getCombinedAnalyticsReport
 );
 router.get(
   "/fuel/:imei",
