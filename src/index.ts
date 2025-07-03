@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import { connectMongoDB } from "./config/database";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import authRoutes from "./routes/authRoutes";
+import analyticsRoutes from "./routes/analyticsRoutes";
 import deviceRoutes from "./routes/deviceRoutes";
 import userRoutes from "./routes/userRoutes";
 import telemetryRoutes from "./routes/telemetryRoutes";
@@ -43,7 +44,11 @@ app.use(
     origin:
       process.env.NODE_ENV === "production"
         ? ["https://your-frontend-domain.com", "http://localhost:5177"]
-        : ["http://localhost:3000", "http://localhost:5177", "http://localhost:3001"],
+        : [
+            "http://localhost:3000",
+            "http://localhost:5177",
+            "http://localhost:3001",
+          ],
     credentials: true,
   })
 );
@@ -122,6 +127,7 @@ apiRouter.use("/auth", authRoutes);
 apiRouter.use("/devices", deviceRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/telemetry", telemetryRoutes);
+apiRouter.use("/analytics", analyticsRoutes);
 apiRouter.use("/realtime", realtimeRoutes);
 apiRouter.use("/geofences", geofenceRoutes);
 apiRouter.use("/collisions", collisionRoutes);
