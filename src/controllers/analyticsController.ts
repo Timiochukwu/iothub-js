@@ -42,7 +42,7 @@ export class analyticsController {
     res: Response<ApiResponse>
   ): Promise<void> => {
     try {
-      const { startDate, endDate, chartType = "daily" } = req.body;
+      const { startDate, endDate, chartType = "daily" } = req.query;
       const { imei } = req.params;
 
       // Validate input
