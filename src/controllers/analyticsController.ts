@@ -2,10 +2,13 @@ import { Request, Response } from "express";
 import { RealTimeService } from "../services/RealTimeService";
 import { ApiResponse } from "../types";
 
-import { CustomError } from "../middleware/errorHandler";
-import { JwtUtils } from "../utils/jwt";
-import { mapTelemetry } from "../utils/mapTelemetry";
-import { TelemetryDTO } from "../types/TelemetryDTO";
+import { ParsedQs } from "qs";
+
+interface CombinedAnalyticsQuery extends ParsedQs {
+  startDate?: string;
+  endDate?: string;
+  chartType?: string;
+}
 
 import {
   TelemetryService,
@@ -37,34 +40,46 @@ export class analyticsController {
     console.log("Checking Telemetry: ", this.telemetryService);
   }
 
+  
+
   getCombinedAnalyticsReport = async (
     req: Request,
     res: Response<ApiResponse>
   ): Promise<void> => {
     try {
-      const { startDate, endDate, chartType = "daily" } = req.query;
+      const { startDate, endDate, chartType = "daily" } = req.query as CombinedAnalyticsQuery;
       const { imei } = req.params;
-
-      // Validate input
-      if (!imei || !startDate || !endDate) {
+  
+      if (!imei || typeof startDate !== "string" || typeof endDate !== "string") {
         res.status(400).json({
           success: false,
-          message: "Missing required fields",
+          message: "Missing or invalid required fields",
           error: "BAD_REQUEST",
         });
         return;
       }
-
-      // Fetch data from the RealTimeService
+  
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+  
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid date format",
+          error: "BAD_REQUEST",
+        });
+        return;
+      }
+  
       const fuelConsumptionData =
         await this.telemetryService.getCombinedAnalyticsReport(
           imei,
-          new Date(startDate),
-          new Date(endDate),
-          chartType,
+          start,
+          end,
+          chartType as ChartGroupingType,
           reportOptions
         );
-
+  
       res.status(200).json({
         success: true,
         message: "Daily fuel consumption retrieved successfully",
@@ -79,6 +94,7 @@ export class analyticsController {
       });
     }
   };
+  
 
   getDailyFuelConsumption = async (
     req: Request,
