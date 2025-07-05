@@ -6,15 +6,72 @@ import {
   CollisionEvent,
 } from "./CollisionDetectionService";
 
-const AVL_ID_MAP = {
-  FUEL_LEVEL: "66",
-  TOTAL_ODOMETER: "241",
-  EVENT_IO_ID: "evt",
-  IGNITION: "239",
-  EXTERNAL_VOLTAGE: "67",
-  SPEED: "37",
-  TIMESTAMP: "ts",
+// const AVL_ID_MAP = {
+//   FUEL_LEVEL: "66",
+//   TOTAL_ODOMETER: "241",
+//   EVENT_IO_ID: "evt",
+//   IGNITION: "239",
+//   EXTERNAL_VOLTAGE: "67",
+//   SPEED: "37",
+//   TIMESTAMP: "ts",
+//   RPM: "36",
+// };
+
+export const AVL_ID_MAP = {
   RPM: "36",
+
+  // --- OBD & Vehicle Parameters ---
+  TOTAL_ODOMETER: 16,
+  DTC_COUNT: 30, // Number of Diagnostic Trouble Codes
+  ENGINE_LOAD: 31,
+  COOLANT_TEMPERATURE: 32, // in Celsius
+  SHORT_FUEL_TRIM: 33, // as a percentage
+  ENGINE_RPM: 36,
+  SPEED: 37, // OBD reported speed in Kph
+  // VEHICLE_SPEED: 37, // OBD reported speed in Kph
+  TIMING_ADVANCE: 38,
+  INTAKE_AIR_TEMPERATURE: 39,
+  RUNTIME_SINCE_ENGINE_START: 42, // in Seconds
+  DISTANCE_TRAVELED_MIL_ON: 43, // MIL = Malfunction Indicator Lamp
+  FUEL_RAIL_PRESSURE: 45, // in kPa
+  FUEL_LEVEL: 48, // Can be percentage or raw value (e.g., Liters, mL)
+  DISTANCE_SINCE_CODES_CLEAR: 49,
+  BAROMETRIC_PRESSURE: 50, // in kPa
+  CONTROL_MODULE_VOLTAGE: 51, // in Millivolts (mV)
+  ABSOLUTE_LOAD_VALUE: 52,
+  AMBIENT_AIR_TEMPERATURE: 53,
+  OBD_OEM_TOTAL_MILEAGE: 389,
+  COMMANDED_EQUIVALENCE_RATIO: 541,
+  FUEL_TYPE: 759,
+
+  // --- Device & Power Parameters ---
+  EXTERNAL_VOLTAGE: 66, // Vehicle battery voltage in Millivolts (mV)
+  BATTERY_VOLTAGE: 67, // Device internal battery voltage in Millivolts (mV)
+  BATTERY_CURRENT: 68,
+  CONTROL_MODULE_VOLTAGE_ALIAS: 13986, // Note: your sample shows 51: 13986, which is unusual. This is likely an error in the sample. I will use 51.
+
+  // --- GNSS (GPS) Parameters ---
+  GNSS_STATUS: 69,
+  GNSS_PDOP: 181, // Position Dilution of Precision
+  GNSS_HDOP: 182, // Horizontal Dilution of Precision
+  SATELLITES: "sat",
+  LAT_LNG: "latlng",
+  ALTITUDE: "alt",
+  ANGLE: "ang",
+  // SPEED: "sp", // GPS reported speed, often in Kph
+
+  // --- Network & Device Status ---
+  GSM_SIGNAL: 21, // Scale 1-5
+  IGNITION: 239, // 1 for ON, 0 for OFF
+  MOVEMENT: 240, // 1 for MOVING, 0 for STOPPED
+  SLEEP_MODE: 200,
+  ACTIVE_GSM_OPERATOR: 241,
+
+  // --- Other Root-Level Parameters ---
+  TIMESTAMP: "ts",
+  EVENT_ID: "evt",
+  TYRE_PRESSURE: "pr",
+  VIN: 256, // Vehicle Identification Number
 };
 
 export interface ReportOptions {
@@ -53,6 +110,14 @@ export interface DrivingSummary {
   rapidDecelCount: number;
 }
 
+export interface BatterySummary {
+  startingVoltage: number;
+  endingVoltage: number;
+  minVoltage: number;
+  maxVoltage: number;
+  averageVoltage: number;
+}
+
 // This interface represents the summary of fuel consumption for a period.
 // export interface FuelSummary {
 //   totalFuelConsumedLiters: number;
@@ -75,6 +140,7 @@ export interface CombinedAnalyticsPoint {
   label: string;
   driving_data: DrivingSummary | null;
   fuel_data: FuelSummary | null;
+  battery_data: BatterySummary | null;
 }
 
 /**
@@ -1416,10 +1482,12 @@ export class TelemetryService {
     options: ReportOptions
   ): Promise<CombinedAnalyticsPoint[]> {
     // 1. Fetch both reports in parallel for maximum efficiency
-    const [drivingReportMap, fuelReportMap] = await Promise.all([
-      this._getDrivingBehaviorReport(imei, startDate, endDate, type, options),
-      this._getFuelAnalyticsReport(imei, startDate, endDate, type),
-    ]);
+    const [drivingReportMap, fuelReportMap, batteryReportMap] =
+      await Promise.all([
+        this._getDrivingBehaviorReport(imei, startDate, endDate, type, options),
+        this._getFuelAnalyticsReport(imei, startDate, endDate, type),
+        this._getBatteryAnalyticsReport(imei, startDate, endDate, type),
+      ]);
 
     // 2. Merge the two reports using their labels (dates/weeks/months) as keys
     const combinedReport = new Map<string, CombinedAnalyticsPoint>();
@@ -1430,6 +1498,7 @@ export class TelemetryService {
         label,
         driving_data: summary,
         fuel_data: null,
+        battery_data: null,
       });
     }
 
@@ -1444,6 +1513,23 @@ export class TelemetryService {
           label,
           driving_data: null,
           fuel_data: summary,
+          battery_data: null,
+        });
+      }
+    }
+
+    // Add/merge battery data into the map
+    for (const [label, summary] of batteryReportMap.entries()) {
+      const existingEntry = combinedReport.get(label);
+      if (existingEntry) {
+        existingEntry.battery_data = summary;
+      } else {
+        // This day has battery data but no driving or fuel data (edge case)
+        combinedReport.set(label, {
+          label,
+          driving_data: null,
+          fuel_data: null,
+          battery_data: summary,
         });
       }
     }
@@ -2005,6 +2091,103 @@ export class TelemetryService {
         endingFuel: parseFloat(point.endingFuel?.toFixed(2) ?? 0),
         totalDistanceKm: parseFloat(point.totalDistanceKm?.toFixed(2) ?? 0),
         mileageKmL: parseFloat(point.mileageKmL?.toFixed(2) ?? 0),
+      });
+    });
+
+    return reportMap;
+  }
+
+  private async _getBatteryAnalyticsReport(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType
+  ): Promise<Map<string, BatterySummary>> {
+    // --- ASSUMPTIONS ---
+    // 1. Using AVL ID for external power voltage. Change if you use internal battery voltage.
+    // 2. The device reports voltage in Millivolts (mV), so we will convert to Volts (V).
+    const voltageKey = `state.reported.${AVL_ID_MAP.EXTERNAL_VOLTAGE}`; // e.g., 'state.reported.66'
+    const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
+
+    // Determine the date format string for the grouping stage
+    let groupByFormat: string;
+    switch (type) {
+      case "weekly":
+        groupByFormat = "%Y-%U"; // Year-WeekNumber
+        break;
+      case "monthly":
+        groupByFormat = "%Y-%m"; // Year-Month
+        break;
+      case "daily":
+      default:
+        groupByFormat = "%Y-%m-%d"; // Year-Month-Day
+        break;
+    }
+
+    const pipeline: any[] = [
+      // STAGE 1: Filter for the device, time range, and ensure voltage data exists.
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [voltageKey]: { $exists: true, $type: "number" },
+        },
+      },
+
+      // STAGE 2: Sort documents by timestamp. ESSENTIAL for $first and $last to work correctly.
+      { $sort: { [tsKey]: 1 } },
+
+      // STAGE 3: Group data into time buckets and calculate aggregates.
+      // All calculations here are performed on the raw Millivolt values.
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: groupByFormat,
+              date: { $toDate: `$${tsKey}` },
+              timezone: "UTC",
+            },
+          },
+          // Get the voltage from the first and last documents in the sorted group
+          startingVoltageRaw: { $first: `$${voltageKey}` },
+          endingVoltageRaw: { $last: `$${voltageKey}` },
+          // Calculate min, max, and average for the entire group
+          minVoltageRaw: { $min: `$${voltageKey}` },
+          maxVoltageRaw: { $max: `$${voltageKey}` },
+          averageVoltageRaw: { $avg: `$${voltageKey}` },
+        },
+      },
+
+      // STAGE 4: Project the final format and CONVERT from Millivolts to Volts.
+      {
+        $project: {
+          _id: 0,
+          label: "$_id",
+          // Divide all raw voltage fields by 1000 to get Volts
+          startingVoltage: { $divide: ["$startingVoltageRaw", 1000] },
+          endingVoltage: { $divide: ["$endingVoltageRaw", 1000] },
+          minVoltage: { $divide: ["$minVoltageRaw", 1000] },
+          maxVoltage: { $divide: ["$maxVoltageRaw", 1000] },
+          averageVoltage: { $divide: ["$averageVoltageRaw", 1000] },
+        },
+      },
+
+      // STAGE 5: Sort the final report by the label (date/week/month).
+      { $sort: { label: 1 } },
+    ];
+
+    const results = await Telemetry.aggregate(pipeline);
+
+    // Map the results to the final Map<string, BatterySummary> structure.
+    const reportMap = new Map<string, BatterySummary>();
+
+    results.forEach((point) => {
+      reportMap.set(point.label, {
+        startingVoltage: parseFloat(point.startingVoltage?.toFixed(2) ?? 0),
+        endingVoltage: parseFloat(point.endingVoltage?.toFixed(2) ?? 0),
+        minVoltage: parseFloat(point.minVoltage?.toFixed(2) ?? 0),
+        maxVoltage: parseFloat(point.maxVoltage?.toFixed(2) ?? 0),
+        averageVoltage: parseFloat(point.averageVoltage?.toFixed(2) ?? 0),
       });
     });
 
