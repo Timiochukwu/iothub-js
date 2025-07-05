@@ -7,7 +7,7 @@ export interface NotificationPayload {
   id: string;
   userId: string;
   imei: string;
-  type: 'collision' | 'speed_limit' | 'fuel_low' | 'engine_fault' | 'battery_low';
+  type: 'collision' | 'speed_limit' | 'fuel_low' | 'engine_fault' | 'battery_low' | 'working_hour';
   severity: 'info' | 'warning' | 'critical';
   title: string;
   message: string;
@@ -181,6 +181,31 @@ export class NotificationService {
       }
     };
 
+    await this.storeNotification(userId, notification);
+    return notification;
+  }
+
+  /**
+   * Create working hour violation notification
+   */
+  async createWorkingHourNotification(
+    userId: string,
+    imei: string,
+    message: string,
+    location?: string
+  ): Promise<NotificationPayload> {
+    const notification: NotificationPayload = {
+      id: `workinghour_${imei}_${Date.now()}`,
+      userId,
+      imei,
+      type: 'working_hour',
+      severity: 'warning',
+      title: 'Working Hour Violation',
+      message,
+      timestamp: Date.now(),
+      isRead: false,
+      metadata: { location }
+    };
     await this.storeNotification(userId, notification);
     return notification;
   }

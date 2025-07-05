@@ -1,0 +1,141 @@
+{
+  "info": {
+    "_postman_id": "working-hours-collection-001",
+    "name": "Working Hours API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Working Hour",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imei\": \"123456789012345\",\n  \"date\": \"2024-07-05\",\n  \"thresholdHours\": 8\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hours",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hours"]
+        }
+      }
+    },
+    {
+      "name": "Get Working Hours",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hours",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hours"]
+        }
+      }
+    },
+    {
+      "name": "Delete Working Hour",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hours/:id",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hours", ":id"]
+        }
+      }
+    },
+    {
+      "name": "Create Working Hour Alert",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"startTime\": \"09:00 AM\",\n  \"endTime\": \"05:00 PM\",\n  \"location\": \"Victoria Island, Lagos, Nigeria\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hour-alerts",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hour-alerts"]
+        }
+      }
+    },
+    {
+      "name": "Get Working Hour Alerts",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hour-alerts",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hour-alerts"]
+        }
+      }
+    },
+    {
+      "name": "Update Working Hour Alert Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"disabled\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hour-alerts/:id/status",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hour-alerts", ":id", "status"]
+        }
+      }
+    },
+    {
+      "name": "Delete Working Hour Alert",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hour-alerts/:id",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hour-alerts", ":id"]
+        }
+      }
+    },
+    {
+      "name": "Filtered Working Hours",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/filtered-working-hours?userId={{userId}}&deviceId={{deviceId}}&date=2024-07-05",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "filtered-working-hours"],
+          "query": [
+            { "key": "userId", "value": "{{userId}}" },
+            { "key": "deviceId", "value": "{{deviceId}}" },
+            { "key": "date", "value": "2024-07-05" }
+          ]
+        }
+      }
+    }
+  ]
+} 

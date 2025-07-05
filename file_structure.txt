@@ -1,12 +1,5 @@
 .
-├── Device_Registration.postman_collection.json
-├── Geofence_Test.postman_collection.json
-├── IoT_Hub_API.postman_collection.json
-├── IoT_Hub_Environment.postman_environment.json
-├── POSTMAN_TESTING_GUIDE.md
 ├── README.md
-├── REALTIME_README.md
-├── TELEMETRY_README.md
 ├── ecosystem.config.js
 ├── env.example
 ├── file_structure.txt
@@ -14,6 +7,14 @@
 ├── nodemon.json
 ├── package-lock.json
 ├── package.json
+├── postman
+│   ├── Device_Registration.postman_collection.json
+│   ├── Geofence_Test.postman_collection.json
+│   ├── IoT_Hub_API.postman_collection.json
+│   ├── IoT_Hub_Environment.postman_environment.json
+│   ├── POSTMAN_TESTING_GUIDE.md
+│   ├── REALTIME_README.md
+│   └── TELEMETRY_README.md
 ├── src
 │   ├── config
 │   │   ├── database.ts
@@ -24,7 +25,10 @@
 │   │   ├── GeofenceController.ts
 │   │   ├── RealTimeController.ts
 │   │   ├── TelemetryController.ts
-│   │   └── UserController.ts
+│   │   ├── UserController.ts
+│   │   ├── analyticsController.ts
+│   │   ├── collisionController.ts
+│   │   └── notificationController.ts
 │   ├── index.ts
 │   ├── middleware
 │   │   ├── auth.ts
@@ -40,17 +44,22 @@
 │   ├── public
 │   │   └── index.html
 │   ├── routes
+│   │   ├── analyticsRoutes.ts
 │   │   ├── authRoutes.ts
+│   │   ├── collisionRoutes.ts
 │   │   ├── deviceRoutes.ts
 │   │   ├── geofenceRoutes.ts
+│   │   ├── notificationRoutes.ts
 │   │   ├── realtimeRoutes.ts
 │   │   ├── telemetryRoutes.ts
 │   │   └── userRoutes.ts
 │   ├── services
+│   │   ├── CollisionDetectionService.ts
 │   │   ├── DeviceService.ts
 │   │   ├── DeviceTypeService.ts
 │   │   ├── EmailService.ts
 │   │   ├── GeofenceService.ts
+│   │   ├── NotificationService.ts
 │   │   ├── RealTimeService.ts
 │   │   ├── RealTimeServiceOld.js
 │   │   ├── TelemetryService.ts
@@ -78,4 +87,4 @@
 ├── websocket docs.md
 └── yarn.lock
 
-13 directories, 66 files
+14 directories, 74 files

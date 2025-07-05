@@ -20,6 +20,7 @@ import swaggerSpec from "./config/swagger";
 import geofenceRoutes from "./routes/geofenceRoutes";
 import { collisionRoutes } from "./routes/collisionRoutes";
 import { notificationRouter } from "./routes/notificationRoutes";
+import workingHoursRouter from "./routes/workingHoursRouter";
 
 import path from "path";
 
@@ -132,6 +133,7 @@ apiRouter.use("/realtime", realtimeRoutes);
 apiRouter.use("/geofences", geofenceRoutes);
 apiRouter.use("/collisions", collisionRoutes);
 apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/working-hours", workingHoursRouter);
 
 // Mount the entire API logic on the '/api' path.
 app.use("/api", apiRouter);
