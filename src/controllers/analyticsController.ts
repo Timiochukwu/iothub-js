@@ -40,17 +40,23 @@ export class analyticsController {
     console.log("Checking Telemetry: ", this.telemetryService);
   }
 
-  
-
   getCombinedAnalyticsReport = async (
     req: Request,
     res: Response<ApiResponse>
   ): Promise<void> => {
     try {
-      const { startDate, endDate, chartType = "daily" } = req.query as CombinedAnalyticsQuery;
+      const {
+        startDate,
+        endDate,
+        chartType = "daily",
+      } = req.query as CombinedAnalyticsQuery;
       const { imei } = req.params;
-  
-      if (!imei || typeof startDate !== "string" || typeof endDate !== "string") {
+
+      if (
+        !imei ||
+        typeof startDate !== "string" ||
+        typeof endDate !== "string"
+      ) {
         res.status(400).json({
           success: false,
           message: "Missing or invalid required fields",
@@ -58,10 +64,10 @@ export class analyticsController {
         });
         return;
       }
-  
+
       const start = new Date(startDate);
       const end = new Date(endDate);
-  
+
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         res.status(400).json({
           success: false,
@@ -70,7 +76,7 @@ export class analyticsController {
         });
         return;
       }
-  
+
       const fuelConsumptionData =
         await this.telemetryService.getCombinedAnalyticsReport(
           imei,
@@ -79,7 +85,7 @@ export class analyticsController {
           chartType as ChartGroupingType,
           reportOptions
         );
-  
+
       res.status(200).json({
         success: true,
         message: "Daily fuel consumption retrieved successfully",
@@ -94,7 +100,6 @@ export class analyticsController {
       });
     }
   };
-  
 
   getDailyFuelConsumption = async (
     req: Request,

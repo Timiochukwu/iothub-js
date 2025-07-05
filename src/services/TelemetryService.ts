@@ -54,10 +54,20 @@ export interface DrivingSummary {
 }
 
 // This interface represents the summary of fuel consumption for a period.
+// export interface FuelSummary {
+//   totalFuelConsumedLiters: number;
+//   totalDistanceKm: number;
+//   mileageKmL: number;
+// }
+
+// Define the data structure for the report, now including all UI elements
 export interface FuelSummary {
   totalFuelConsumedLiters: number;
+  totalFuelRefueledLiters: number; // NEW: For the blue bars in the chart
   totalDistanceKm: number;
   mileageKmL: number;
+  startingFuel: number; // NEW: For the "Fuel Usage" card
+  endingFuel: number; // NEW: For the "Fuel Usage" card
 }
 
 // This is the final, combined data structure for each point in the report.
@@ -1661,10 +1671,167 @@ export class TelemetryService {
     return reportMap;
   }
 
-  /**
-   * [PRIVATE] Generates a time-bucketed report for fuel consumption and mileage.
-   * Returns a Map for easy merging.
-   */
+  // /**
+  //  * [PRIVATE] Generates a time-bucketed report for fuel consumption and mileage.
+  //  * Returns a Map for easy merging.
+  //  */
+  // private async _getFuelAnalyticsReport(
+  //   imei: string,
+  //   startDate: Date,
+  //   endDate: Date,
+  //   type: ChartGroupingType
+  // ): Promise<Map<string, FuelSummary>> {
+  //   // Define keys for telemetry fields
+  //   const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
+  //   const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+  //   const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+
+  //   // Determine the date format string for the grouping stage
+  //   let groupByFormat: string;
+  //   switch (type) {
+  //     case "weekly":
+  //       groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
+  //       break;
+  //     case "monthly":
+  //       groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
+  //       break;
+  //     case "daily":
+  //     default:
+  //       groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
+  //       break;
+  //   }
+
+  //   const pipeline: any[] = [
+  //     // STAGE 1: Filter for the device, time range, and essential data fields.
+  //     {
+  //       $match: {
+  //         imei,
+  //         [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+  //         [fuelKey]: { $exists: true, $type: "number" },
+  //         [speedKey]: { $exists: true, $type: "number" },
+  //       },
+  //     },
+
+  //     // STAGE 2: Sort documents by timestamp to process them in chronological order.
+  //     { $sort: { [tsKey]: 1 } },
+
+  //     // STAGE 3: Use $setWindowFields to get the PREVIOUS values for each field.
+  //     {
+  //       $setWindowFields: {
+  //         partitionBy: "$imei",
+  //         sortBy: { [tsKey]: 1 },
+  //         output: {
+  //           previousSpeed: {
+  //             $shift: { output: `$${speedKey}`, by: -1, default: null },
+  //           },
+  //           previousTimestamp: {
+  //             $shift: { output: `$${tsKey}`, by: -1, default: null },
+  //           },
+  //           previousFuel: {
+  //             $shift: { output: `$${fuelKey}`, by: -1, default: null },
+  //           },
+  //         },
+  //       },
+  //     },
+
+  //     // STAGE 4: Calculate deltas for distance and fuel for each segment.
+  //     {
+  //       $addFields: {
+  //         // Calculate distance for this segment using average speed.
+  //         distanceDeltaKm: {
+  //           $cond: {
+  //             if: { $ne: ["$previousTimestamp", null] },
+  //             then: {
+  //               $multiply: [
+  //                 {
+  //                   $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
+  //                 },
+  //                 {
+  //                   $divide: [
+  //                     { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
+  //                     3600000,
+  //                   ],
+  //                 },
+  //               ],
+  //             },
+  //             else: 0,
+  //           },
+  //         },
+  //         // Calculate fuel consumption. Ignore refills (where fuel level increases).
+  //         // If (previousFuel - currentFuel) is negative, it's a refill, so consumption is 0.
+  //         fuelDeltaLiters: {
+  //           $cond: {
+  //             if: { $ne: ["$previousFuel", null] },
+  //             then: {
+  //               $max: [0, { $subtract: ["$previousFuel", `$${fuelKey}`] }],
+  //             },
+  //             else: 0,
+  //           },
+  //         },
+  //       },
+  //     },
+
+  //     // STAGE 5: Group the segments into time buckets (daily, weekly, monthly).
+  //     {
+  //       $group: {
+  //         _id: {
+  //           $dateToString: {
+  //             format: groupByFormat,
+  //             date: { $toDate: `$${tsKey}` },
+  //             timezone: "UTC",
+  //           },
+  //         },
+  //         totalFuelConsumedLiters: { $sum: "$fuelDeltaLiters" },
+  //         totalDistanceKm: { $sum: "$distanceDeltaKm" },
+  //       },
+  //     },
+
+  //     // STAGE 6: Project the final format and calculate mileage.
+  //     {
+  //       $project: {
+  //         _id: 0,
+  //         label: "$_id",
+  //         totalFuelConsumedLiters: 1,
+  //         totalDistanceKm: 1,
+  //         // Calculate mileage (km/L), handling division by zero.
+  //         mileageKmL: {
+  //           $cond: {
+  //             if: { $gt: ["$totalFuelConsumedLiters", 0] },
+  //             then: {
+  //               $divide: ["$totalDistanceKm", "$totalFuelConsumedLiters"],
+  //             },
+  //             else: 0,
+  //           },
+  //         },
+  //       },
+  //     },
+
+  //     // STAGE 7: Sort the final report by the label (date/week/month).
+  //     { $sort: { label: 1 } },
+  //   ];
+
+  //   const results = await Telemetry.aggregate(pipeline);
+
+  //   // Map the results to the final Map<string, FuelSummary> structure.
+  //   const reportMap = new Map<string, FuelSummary>();
+
+  //   results.forEach((point) => {
+  //     reportMap.set(point.label, {
+  //       totalFuelConsumedLiters: parseFloat(
+  //         point.totalFuelConsumedLiters?.toFixed(2) ?? 0
+  //       ),
+  //       totalDistanceKm: parseFloat(point.totalDistanceKm?.toFixed(2) ?? 0),
+  //       mileageKmL: parseFloat(point.mileageKmL?.toFixed(2) ?? 0),
+  //     });
+  //   });
+
+  //   return reportMap;
+  // }
+
+  // Assume Telemetry model and AVL_ID_MAP are defined elsewhere
+  // e.g., import { Telemetry } from './telemetry.model';
+  // e.g., import { AVL_ID_MAP, ChartGroupingType } from './constants';
+
   private async _getFuelAnalyticsReport(
     imei: string,
     startDate: Date,
@@ -1674,7 +1841,7 @@ export class TelemetryService {
     // Define keys for telemetry fields
     const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
     const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
-    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`; // Assumed to be in Liters
 
     // Determine the date format string for the grouping stage
     let groupByFormat: string;
@@ -1724,10 +1891,9 @@ export class TelemetryService {
         },
       },
 
-      // STAGE 4: Calculate deltas for distance and fuel for each segment.
+      // STAGE 4: Calculate deltas for distance, fuel consumed, and fuel refueled.
       {
         $addFields: {
-          // Calculate distance for this segment using average speed.
           distanceDeltaKm: {
             $cond: {
               if: { $ne: ["$previousTimestamp", null] },
@@ -1747,13 +1913,23 @@ export class TelemetryService {
               else: 0,
             },
           },
-          // Calculate fuel consumption. Ignore refills (where fuel level increases).
-          // If (previousFuel - currentFuel) is negative, it's a refill, so consumption is 0.
           fuelDeltaLiters: {
+            // Fuel Consumption (drop in fuel level)
             $cond: {
               if: { $ne: ["$previousFuel", null] },
               then: {
                 $max: [0, { $subtract: ["$previousFuel", `$${fuelKey}`] }],
+              },
+              else: 0,
+            },
+          },
+          // --- NEW: Calculate fuel added (refueling) ---
+          refuelDeltaLiters: {
+            // Fuel Refill (increase in fuel level)
+            $cond: {
+              if: { $ne: ["$previousFuel", null] },
+              then: {
+                $max: [0, { $subtract: [`$${fuelKey}`, "$previousFuel"] }],
               },
               else: 0,
             },
@@ -1771,24 +1947,36 @@ export class TelemetryService {
               timezone: "UTC",
             },
           },
-          totalFuelConsumedLiters: { $sum: "$fuelDeltaLiters" },
+          totalFuelConsumedRaw: { $sum: "$fuelDeltaLiters" }, // In mL
           totalDistanceKm: { $sum: "$distanceDeltaKm" },
+          totalFuelRefueledRaw: { $sum: "$refuelDeltaLiters" }, // In mL
+          startingFuelRaw: { $first: `$${fuelKey}` }, // In mL
+          endingFuelRaw: { $last: `$${fuelKey}` }, // In mL
         },
       },
 
-      // STAGE 6: Project the final format and calculate mileage.
+      // STAGE 6: Project, Calculate, AND CONVERT units
       {
         $project: {
           _id: 0,
           label: "$_id",
-          totalFuelConsumedLiters: 1,
           totalDistanceKm: 1,
-          // Calculate mileage (km/L), handling division by zero.
+
+          // *** FIX: Convert all raw fuel values from mL to Liters by dividing by 1000 ***
+          totalFuelConsumedLiters: { $divide: ["$totalFuelConsumedRaw", 1000] },
+          totalFuelRefueledLiters: { $divide: ["$totalFuelRefueledRaw", 1000] },
+          startingFuel: { $divide: ["$startingFuelRaw", 1000] },
+          endingFuel: { $divide: ["$endingFuelRaw", 1000] },
+
+          // Mileage calculation now uses the CORRECTED fuel consumption in Liters
           mileageKmL: {
             $cond: {
-              if: { $gt: ["$totalFuelConsumedLiters", 0] },
+              if: { $gt: ["$totalFuelConsumedRaw", 0] }, // Check against raw value to avoid float issues
               then: {
-                $divide: ["$totalDistanceKm", "$totalFuelConsumedLiters"],
+                $divide: [
+                  "$totalDistanceKm",
+                  { $divide: ["$totalFuelConsumedRaw", 1000] }, // Use the converted value here
+                ],
               },
               else: 0,
             },
@@ -1803,13 +1991,18 @@ export class TelemetryService {
     const results = await Telemetry.aggregate(pipeline);
 
     // Map the results to the final Map<string, FuelSummary> structure.
+    // The values from the pipeline are now already in the correct units.
     const reportMap = new Map<string, FuelSummary>();
-
     results.forEach((point) => {
       reportMap.set(point.label, {
         totalFuelConsumedLiters: parseFloat(
           point.totalFuelConsumedLiters?.toFixed(2) ?? 0
         ),
+        totalFuelRefueledLiters: parseFloat(
+          point.totalFuelRefueledLiters?.toFixed(2) ?? 0
+        ),
+        startingFuel: parseFloat(point.startingFuel?.toFixed(2) ?? 0),
+        endingFuel: parseFloat(point.endingFuel?.toFixed(2) ?? 0),
         totalDistanceKm: parseFloat(point.totalDistanceKm?.toFixed(2) ?? 0),
         mileageKmL: parseFloat(point.mileageKmL?.toFixed(2) ?? 0),
       });
