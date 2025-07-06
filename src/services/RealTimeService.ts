@@ -25,7 +25,6 @@ interface HistoryPayload {
   endDate: string;
 }
 
-
 // Add this interface to your existing interfaces
 interface CollisionAlertEvent {
   type: "collision_alert";
@@ -118,10 +117,10 @@ export class RealTimeService {
         this.handleDisconnection(socket, reason)
       );
 
-      socket.on("update_collision_status", (data : any) =>
+      socket.on("update_collision_status", (data: any) =>
         this.handleCollisionStatusUpdate(socket, data)
       );
-      socket.on("get_collision_history", (data : any) =>
+      socket.on("get_collision_history", (data: any) =>
         this.handleGetCollisionHistory(socket, data)
       );
 
@@ -138,16 +137,16 @@ export class RealTimeService {
       );
 
       // Add these new event listeners
-      socket.on("get_notifications", (data : any) =>
+      socket.on("get_notifications", (data: any) =>
         this.handleGetNotifications(socket, data)
       );
-      socket.on("mark_notification_read", (data : any) =>
+      socket.on("mark_notification_read", (data: any) =>
         this.handleMarkNotificationRead(socket, data)
       );
       socket.on("mark_all_notifications_read", () =>
         this.handleMarkAllNotificationsRead(socket)
       );
-      socket.on("delete_notification", (data : any) =>
+      socket.on("delete_notification", (data: any) =>
         this.handleDeleteNotification(socket, data)
       );
     });
@@ -469,12 +468,16 @@ export class RealTimeService {
       const telemetryData = ingestResult.data;
       if (!telemetryData) throw new Error("Ingested data is invalid.");
 
-        // 🟢 NEW: Check for collision alerts
-        const collisionAlert = ingestResult.data?.collisionAlert;
-        // Only call handleCollisionAlert if collisionAlert is an object and not a boolean
-        if (collisionAlert && typeof collisionAlert === 'object' && !Array.isArray(collisionAlert)) {
-          await this.handleCollisionAlert(imei, collisionAlert);
-        }
+      // 🟢 NEW: Check for collision alerts
+      const collisionAlert = ingestResult.data?.collisionAlert;
+      // Only call handleCollisionAlert if collisionAlert is an object and not a boolean
+      if (
+        collisionAlert &&
+        typeof collisionAlert === "object" &&
+        !Array.isArray(collisionAlert)
+      ) {
+        await this.handleCollisionAlert(imei, collisionAlert);
+      }
 
       const event: RealTimeTelemetryEvent = {
         type: "telemetry_update",
@@ -497,9 +500,11 @@ export class RealTimeService {
     }
   }
 
-
-   // 🟢 NEW: Handle collision alerts
-   private async handleCollisionAlert(imei: string, alert: CollisionAlert): Promise<void> {
+  // 🟢 NEW: Handle collision alerts
+  private async handleCollisionAlert(
+    imei: string,
+    alert: CollisionAlert
+  ): Promise<void> {
     try {
       console.log(
         `[Collision Alert] 🚨 ${alert.severity.toUpperCase()} collision detected for device ${imei}`
@@ -508,7 +513,9 @@ export class RealTimeService {
       // Find device owner
       const device = await Device.findOne({ imei });
       if (!device || !device.user) {
-        console.error(`[Collision Alert] ❌ Device ${imei} not found or has no owner`);
+        console.error(
+          `[Collision Alert] ❌ Device ${imei} not found or has no owner`
+        );
         return;
       }
 
@@ -520,31 +527,34 @@ export class RealTimeService {
         severity: alert.severity,
         location: {
           latlng: alert.location,
-          address: alert.location
+          address: alert.location,
         },
         vehicleInfo: {
           speed: 0, // You'll need to extract this from your telemetry
           rpm: 0,
-          direction: 0
+          direction: 0,
         },
         accelerometerData: {
-          x: 0, y: 0, z: 0 // You'll need to extract this from your telemetry
+          x: 0,
+          y: 0,
+          z: 0, // You'll need to extract this from your telemetry
         },
-        status: 'pending' as const,
-        emergencyContacted: alert.severity === 'severe'
+        status: "pending" as const,
+        emergencyContacted: alert.severity === "severe",
       };
 
       // Create notification
-      const notification = await this.notificationService.createCollisionNotification(
-        collisionEvent,
-        device.user.toString()
-      );
+      const notification =
+        await this.notificationService.createCollisionNotification(
+          collisionEvent,
+          device.user.toString()
+        );
 
       const collisionEventData = {
         type: "collision_alert",
         imei,
         timestamp: alert.timestamp,
-        alert
+        alert,
       };
 
       // Send real-time collision alert to watchers
@@ -559,24 +569,23 @@ export class RealTimeService {
           ...notification,
           date: new Date(notification.timestamp).toLocaleDateString(),
           time: new Date(notification.timestamp).toLocaleTimeString(),
-          icon: '🚗',
-          color: notification.severity === 'critical' ? '#EF4444' : '#F59E0B'
-        }
+          icon: "🚗",
+          color: notification.severity === "critical" ? "#EF4444" : "#F59E0B",
+        },
       });
 
       // For severe collisions, broadcast to emergency channels
-      if (alert.severity === 'severe') {
+      if (alert.severity === "severe") {
         this.io.emit("emergency_collision", {
           ...collisionEventData,
           priority: "HIGH",
-          emergencyResponse: true
+          emergencyResponse: true,
         });
       }
 
       console.log(
         `[Collision Alert] 📡 Collision alert and notification sent for ${imei} - Severity: ${alert.severity}`
       );
-
     } catch (error) {
       console.error(
         `[Collision Alert] ❌ Error handling collision alert for ${imei}:`,
@@ -591,7 +600,7 @@ export class RealTimeService {
     data: {
       imei: string;
       collisionId: string;
-      status: 'confirmed' | 'false_alarm';
+      status: "confirmed" | "false_alarm";
       responseTime?: number;
     }
   ): Promise<void> {
@@ -611,7 +620,12 @@ export class RealTimeService {
       }
 
       // Update collision status
-      await this.telemetryService.updateCollisionStatus(imei, collisionId, status, responseTime);
+      await this.telemetryService.updateCollisionStatus(
+        imei,
+        collisionId,
+        status,
+        responseTime
+      );
 
       // Notify all watchers about the status update
       const watchRoom = `watch:${imei}`;
@@ -620,23 +634,25 @@ export class RealTimeService {
         collisionId,
         status,
         updatedBy: user.email,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       socket.emit("collision_status_update_success", {
         message: `Collision status updated to ${status}`,
         collisionId,
-        status
+        status,
       });
 
       console.log(
         `[Collision Status] ✅ User ${user.email} updated collision ${collisionId} status to ${status}`
       );
-
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to update collision status";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to update collision status";
       const errorCode = error instanceof CustomError ? error.statusCode : 500;
-      
+
       console.error(`[Collision Status] ❌ Error: ${errorMessage}`);
       socket.emit("error", {
         message: "Failed to update collision status",
@@ -666,18 +682,23 @@ export class RealTimeService {
         throw new CustomError(`Access denied to device ${imei}.`, 403);
       }
 
-      const collisionHistory = await this.telemetryService.getCollisionHistory(imei, limit);
+      const collisionHistory = await this.telemetryService.getCollisionHistory(
+        imei,
+        limit
+      );
 
       socket.emit("collision_history", {
         imei,
         collisions: collisionHistory,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
-
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to get collision history";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to get collision history";
       const errorCode = error instanceof CustomError ? error.statusCode : 500;
-      
+
       console.error(`[Collision History] ❌ Error: ${errorMessage}`);
       socket.emit("error", {
         message: "Failed to get collision history",
@@ -686,7 +707,6 @@ export class RealTimeService {
       });
     }
   }
-
 
   private async handleGetFuelLevelHistory(
     socket: Socket<any, any, any, SocketData>,
@@ -893,12 +913,12 @@ export class RealTimeService {
     console.log(
       `[Broadcast] 🚨 Broadcasting collision alert to room '${watchRoom}'.`
     );
-    
+
     this.io.to(watchRoom).emit("collision_alert", {
       type: "collision_alert",
       imei,
       timestamp: Date.now(),
-      alert
+      alert,
     });
   }
 
@@ -949,5 +969,19 @@ export class RealTimeService {
     data: { id: string }
   ): Promise<void> {
     // TODO: Implement delete notification logic
+  }
+
+  private async checkWorkingHours(
+    imei: string,
+    options: any
+  ): Promise<boolean> {
+    const currentTime = new Date();
+    const startHour = options.startHour || 9; // Default start hour
+    const endHour = options.endHour || 17; // Default end hour
+
+    //check if device is in transit
+    const changeStream = Telemetry.watch();
+
+    return isWithinWorkingHours;
   }
 }
