@@ -2,8 +2,7 @@ import { Router } from "express";
 import { authenticateToken } from "../middleware/auth";
 import {
   getRecentCollisions,
-  getCollisionStats,
-  updateCollisionStatus,
+  getRecentCollision,
 } from "../controllers/collisionController";
 
 const router = Router();
