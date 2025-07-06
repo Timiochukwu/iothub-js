@@ -27,6 +27,17 @@ const WorkingHourAlertSchema = new Schema({
   },
   location: { type: String },
   status: { type: String, enum: ["active", "expired", "disabled"], default: "active" },
+  violations: [
+    {
+      timestamp: { type: Date, required: true },
+      location: {
+        lat: Number,
+        lng: Number,
+      },
+      durationSeconds: { type: Number },
+      status: { type: String, enum: ["active", "resolved"], default: "active" },
+    }
+  ],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
