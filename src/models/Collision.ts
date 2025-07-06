@@ -9,6 +9,8 @@ const CollisionAlertSchema = new mongoose.Schema({
     lng: { type: Number, required: true },
   },
   message: { type: String, required: true },
+  speed: { type: Number },
+  rpm: { type: Number },
   data: {
     type: Schema.Types.Mixed,
     default: {},

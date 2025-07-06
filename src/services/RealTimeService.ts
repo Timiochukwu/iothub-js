@@ -1138,16 +1138,20 @@ export class RealTimeService {
       const lat = latLng ? latLng.split(",")[0] : null;
       const lng = latLng ? latLng.split(",")[1] : null;
 
+      const now = new Date();
+
       // 4. FIX: Use the ICollisionAlert interface for type safety
       const collisionAlert = {
         device: device._id.toString(), // _id is available on the lean object
-        timestamp: currentTimestamp,
+        timestamp: now,
         location: { lat, lng },
         message:
           `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
           `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`,
         // 5. FIX: Pass the plain object `currentPoint` to your mapping function
-        data: mapTelemetry(currentPoint),
+        data: currentPoint,
+        speed: currentSpeed,
+        rpm: currentPoint[AVL_ID_MAP.RPM] || 0,
       };
 
       await CollisionAlert.create(collisionAlert);

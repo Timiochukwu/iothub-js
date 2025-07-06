@@ -20,7 +20,11 @@ export const getRecentCollision = async (req: Request, res: Response) => {
     if (!device)
       throw new CustomError(`Access denied to device ${deviceId}`, 403);
 
-    const collisions = await CollisionAlert.findOne({ device: device._id });
+    const collisions = await CollisionAlert.findOne({
+      device: device._id,
+    }).sort({
+      timestamp: -1,
+    });
 
     res.json({
       success: true,
