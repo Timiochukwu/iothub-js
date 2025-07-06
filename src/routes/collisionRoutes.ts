@@ -1,15 +1,16 @@
-import { Router } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { Router } from "express";
+import { authenticateToken } from "../middleware/auth";
 import {
   getRecentCollisions,
   getCollisionStats,
-  updateCollisionStatus
-} from '../controllers/collisionController';
+  updateCollisionStatus,
+} from "../controllers/collisionController";
 
 const router = Router();
 
-router.get('/recent/:imei', authenticateToken, getRecentCollisions);
-router.get('/stats/:imei', authenticateToken, getCollisionStats);
-router.put('/status', authenticateToken, updateCollisionStatus);
+router.get("/", authenticateToken, getRecentCollision);
+router.get("/recent", authenticateToken, getRecentCollision);
+// router.get("/stats/:imei", authenticateToken, getCollisionStats);
+// router.put("/status", authenticateToken, updateCollisionStatus);
 
-export { router as collisionRoutes }; 
+export { router as collisionRoutes };
