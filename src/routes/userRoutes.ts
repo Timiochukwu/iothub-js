@@ -36,4 +36,14 @@ router.delete(
   userController.deleteUser
 );
 
+// Profile/account endpoints
+router.get("/me", authenticateToken, userController.me);
+router.put("/me", authenticateToken, userController.updateUser);
+router.post("/change-password", authenticateToken, userController.changePassword);
+// Logout (stateless JWT, so just a placeholder)
+router.post("/logout", authenticateToken, (req, res) => {
+  // For JWT, logout is handled on frontend by deleting the token
+  res.status(200).json({ success: true, message: "Logged out (client should delete token)" });
+});
+
 export default router;

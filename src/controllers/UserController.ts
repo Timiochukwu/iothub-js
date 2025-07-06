@@ -92,11 +92,23 @@ export class UserController {
   };
 
   updateUser = async (
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response<ApiResponse>
   ): Promise<void> => {
     try {
-      const result = await this.userService.updateUser(req.body);
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: "User not authenticated",
+          error: "UNAUTHORIZED",
+        });
+        return;
+      }
+      // Use authenticated user's email
+      const result = await this.userService.updateUser({
+        email: req.user.email,
+        ...req.body
+      });
       res.status(200).json(result);
     } catch (error) {
       const customError = error as CustomError;
@@ -109,11 +121,23 @@ export class UserController {
   };
 
   changePassword = async (
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response<ApiResponse>
   ): Promise<void> => {
     try {
-      const result = await this.userService.changePassword(req.body);
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: "User not authenticated",
+          error: "UNAUTHORIZED",
+        });
+        return;
+      }
+      // Use authenticated user's email
+      const result = await this.userService.changePassword({
+        email: req.user.email,
+        ...req.body
+      });
       res.status(200).json(result);
     } catch (error) {
       const customError = error as CustomError;
