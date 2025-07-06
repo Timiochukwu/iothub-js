@@ -18,6 +18,9 @@ import { JwtUtils } from "../utils/jwt";
 import { mapTelemetry } from "../utils/mapTelemetry";
 import { TelemetryDTO } from "../types/TelemetryDTO";
 import { NotificationService } from "./NotificationService";
+import { WorkingHours, WorkingHourAlert } from "../models/WorkingHours";
+
+import { AVL_ID_MAP } from "../services/TelemetryService";
 
 interface HistoryPayload {
   imei: string;
@@ -189,6 +192,8 @@ export class RealTimeService {
         console.log(
           `[Change Stream] 👂 Detected 'insert' for IMEI: ${newTelemetryDoc.imei}`
         );
+
+        this.handleWorkingHour(newTelemetryDoc.imei, newTelemetryDoc);
 
         // Prepare the payload for the clients (watchers)
         const telemetryData = this.mapToTelemetryData(newTelemetryDoc);
@@ -971,17 +976,64 @@ export class RealTimeService {
     // TODO: Implement delete notification logic
   }
 
-  private async checkWorkingHours(
-    imei: string,
-    options: any
-  ): Promise<boolean> {
+  private async handleWorkingHour(imei: string, payload: any): Promise<void> {
     const currentTime = new Date();
-    const startHour = options.startHour || 9; // Default start hour
-    const endHour = options.endHour || 17; // Default end hour
+    // get device id by imei
+    const device = await Device.findOne({ imei });
+    if (!device) {
+      console.log(`Device with IMEI ${imei} not found.`);
+      return;
+    }
 
-    //check if device is in transit
-    const changeStream = Telemetry.watch();
+    const deviceId = device._id?.toString();
 
-    return isWithinWorkingHours;
+    // get working hours
+    const workingHourData = await WorkingHours.findOne({ deviceId });
+    if (!workingHourData) {
+      console.log(`Working hours not found for device ID ${deviceId}.`);
+      return;
+    }
+
+    // check if current time is within working hours
+    const startTime = workingHourData.startTime;
+    const endTime = workingHourData.endTime;
+
+    const formatStartTime = new Date(
+      currentTime.toDateString() + " " + startTime
+    );
+    const formatEndTime = new Date(currentTime.toDateString() + " " + endTime);
+
+    // if (!(currentTime >= formatStartTime && currentTime <= formatEndTime)) {
+    if (
+      payload.state.reported.ts > formatEndTime.getTime() ||
+      payload.state.reported.ts < formatStartTime.getTime()
+    ) {
+      if (payload.state.reported[AVL_ID_MAP["MOVEMENT"]] == 1) {
+        console.log(
+          `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`
+        );
+
+        const latLng = payload.state.reported[AVL_ID_MAP["LAT_LNG"]];
+        const lat = latLng ? latLng.split(",")[0] : null;
+        const lng = latLng ? latLng.split(",")[1] : null;
+
+        await WorkingHourAlert.create({
+          device: deviceId,
+          imei,
+          timestamp: currentTime,
+          data: payload.state.reported,
+          location: {
+            lat: lat,
+            lng: lng,
+          },
+          status: "danger",
+          message: `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`,
+        });
+
+        // Here you can handle the logic for when the device is outside working hours
+        // For example, you might want to log this or send a notification
+      }
+    }
+    // }
   }
 }
