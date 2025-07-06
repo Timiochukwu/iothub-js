@@ -197,6 +197,7 @@ export class RealTimeService {
         );
 
         this.handleWorkingHour(newTelemetryDoc.imei, newTelemetryDoc);
+        this.handleCollisionByDeceleration(newTelemetryDoc.imei);
 
         // Prepare the payload for the clients (watchers)
         const telemetryData = this.mapToTelemetryData(newTelemetryDoc);
@@ -1047,6 +1048,7 @@ export class RealTimeService {
     const recentTelemetry = await Telemetry.find({ imei })
       .sort({ "state.reported.ts": -1 })
       .limit(2)
+      .lean() // Use .lean() to get plain JavaScript objects instead of Mongoose Documents
       .exec();
 
     // Ensure we have two points to compare
@@ -1063,8 +1065,16 @@ export class RealTimeService {
     const currentTelemetry = recentTelemetry[0];
     const previousTelemetry = recentTelemetry[1];
 
-    const previousPoint = previousTelemetry?.state?.reported;
-    const currentPoint = currentTelemetry?.state?.reported;
+    const previousPoint = previousTelemetry?.state?.reported as any;
+    const currentPoint = currentTelemetry?.state?.reported as any;
+
+    console.log("Full: ", recentTelemetry);
+
+    console.log("currentTelemetry: ", currentTelemetry);
+    console.log("previousTelemetry: ", previousTelemetry);
+
+    console.log("currentPoint: ", currentPoint);
+    console.log("previousPoint: ", previousPoint);
 
     if (!previousPoint || !currentPoint) {
       console.log(`Telemetry data is malformed for IMEI ${imei}.`);
