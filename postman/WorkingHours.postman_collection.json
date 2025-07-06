@@ -1,57 +1,10 @@
 {
   "info": {
-    "_postman_id": "working-hours-collection-001",
-    "name": "Working Hours API",
+    "_postman_id": "working-hours-collection-003",
+    "name": "Working Hours API (UI Minimal Fields)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
-    {
-      "name": "Create Working Hour",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
-          { "key": "Content-Type", "value": "application/json", "type": "text" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"imei\": \"123456789012345\",\n  \"date\": \"2024-07-05\",\n  \"thresholdHours\": 8\n}"
-        },
-        "url": {
-          "raw": "{{baseUrl}}/api/working-hours/working-hours",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "working-hours", "working-hours"]
-        }
-      }
-    },
-    {
-      "name": "Get Working Hours",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/working-hours/working-hours",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "working-hours", "working-hours"]
-        }
-      }
-    },
-    {
-      "name": "Delete Working Hour",
-      "request": {
-        "method": "DELETE",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/working-hours/working-hours/:id",
-          "host": ["{{baseUrl}}"],
-          "path": ["api", "working-hours", "working-hours", ":id"]
-        }
-      }
-    },
     {
       "name": "Create Working Hour Alert",
       "request": {
@@ -62,17 +15,27 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"deviceId\": \"{{deviceId}}\",\n  \"startTime\": \"09:00 AM\",\n  \"endTime\": \"05:00 PM\",\n  \"location\": \"Victoria Island, Lagos, Nigeria\"\n}"
+          "raw": "{\n  \"deviceId\": \"{{deviceId}}\",\n  \"startTime\": \"09:00 AM\",\n  \"endTime\": \"05:00 PM\"\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/api/working-hours/working-hour-alerts",
           "host": ["{{baseUrl}}"],
           "path": ["api", "working-hours", "working-hour-alerts"]
         }
-      }
+      },
+      "response": [
+        {
+          "name": "201 Created",
+          "originalRequest": {},
+          "status": "201 Created",
+          "code": 201,
+          "_postman_id": "example-create-alert-response",
+          "body": "{\n  \"_id\": \"686a1fca6b3ee8e7a6eee1dc\",\n  \"schedule\": {\n    \"startTime\": \"09:00 AM\",\n    \"endTime\": \"05:00 PM\"\n  },\n  \"user\": {\n    \"_id\": \"6862a4a1bbef1aac3f7504f2\"\n  },\n  \"device\": {\n    \"_id\": \"6862a553bbef1aac3f7504fd\",\n    \"imei\": \"864636069379085\",\n    \"make\": \"Toyota\",\n    \"modelYear\": \"2009\",\n    \"plateNumber\": \"GGE-342-LA\",\n    \"deviceType\": \"My car pro\"\n  },\n  \"location\": {\n    \"lat\": 6.5244,\n    \"lng\": 3.3792\n  },\n  \"status\": \"active\",\n  \"violations\": [],\n  \"createdAt\": \"2025-07-06T07:03:38.922Z\",\n  \"updatedAt\": \"2025-07-06T07:03:38.923Z\",\n  \"__v\": 0\n}"
+        }
+      ]
     },
     {
-      "name": "Get Working Hour Alerts",
+      "name": "List Working Hour Alerts",
       "request": {
         "method": "GET",
         "header": [
@@ -83,7 +46,17 @@
           "host": ["{{baseUrl}}"],
           "path": ["api", "working-hours", "working-hour-alerts"]
         }
-      }
+      },
+      "response": [
+        {
+          "name": "200 OK",
+          "originalRequest": {},
+          "status": "200 OK",
+          "code": 200,
+          "_postman_id": "example-list-alerts-response",
+          "body": "[{\n  \"_id\": \"686a1fca6b3ee8e7a6eee1dc\",\n  \"schedule\": {\n    \"startTime\": \"09:00 AM\",\n    \"endTime\": \"05:00 PM\"\n  },\n  \"user\": {\n    \"_id\": \"6862a4a1bbef1aac3f7504f2\"\n  },\n  \"device\": {\n    \"_id\": \"6862a553bbef1aac3f7504fd\",\n    \"imei\": \"864636069379085\",\n    \"make\": \"Toyota\",\n    \"modelYear\": \"2009\",\n    \"plateNumber\": \"GGE-342-LA\"\n  },\n  \"location\": {\n    \"lat\": 6.5244,\n    \"lng\": 3.3792\n  },\n  \"status\": \"active\",\n  \"violations\": [],\n  \"createdAt\": \"2025-07-06T07:03:38.922Z\",\n  \"updatedAt\": \"2025-07-06T07:03:38.923Z\",\n  \"__v\": 0\n}]"
+        }
+      ]
     },
     {
       "name": "Update Working Hour Alert Status",
@@ -119,6 +92,67 @@
       }
     },
     {
+      "name": "List Violations for Alert",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hour-alerts/:id/violations",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hour-alerts", ":id", "violations"]
+        }
+      }
+    },
+    {
+      "name": "Create Working Hour Record",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"imei\": \"123456789012345\",\n  \"date\": \"2024-07-05\",\n  \"thresholdHours\": 8\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hours",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hours"]
+        }
+      }
+    },
+    {
+      "name": "List Working Hour Records",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hours",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hours"]
+        }
+      }
+    },
+    {
+      "name": "Delete Working Hour Record",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hours/:id",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hours", ":id"]
+        }
+      }
+    },
+    {
       "name": "Filtered Working Hours",
       "request": {
         "method": "GET",
@@ -134,6 +168,20 @@
             { "key": "deviceId", "value": "{{deviceId}}" },
             { "key": "date", "value": "2024-07-05" }
           ]
+        }
+      }
+    },
+    {
+      "name": "Manual Violation Check (Optional)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/working-hours/working-hour-alerts/:deviceId/check-violations",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "working-hours", "working-hour-alerts", ":deviceId", "check-violations"]
         }
       }
     }
