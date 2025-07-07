@@ -1,9 +1,10 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
 import { Server as HTTPServer } from "http";
 import * as jwt from "jsonwebtoken";
-import { CollisionAlert } from "./CollisionDetectionService";
+// import { CollisionAlert } from "./CollisionDetectionService";
 import { TelemetryService } from "./TelemetryService";
 import { Telemetry, ITelemetry } from "../models/Telemetry";
+import { CollisionAlert } from "../models/Collision";
 import { Device } from "../models/Device";
 import {
   DeviceConnection,
@@ -20,6 +21,8 @@ import { TelemetryDTO } from "../types/TelemetryDTO";
 import { NotificationService } from "./NotificationService";
 import { WorkingHours, WorkingHourAlert } from "../models/WorkingHours";
 
+const COLLISION_DECELERATION_THRESHOLD_KPH_S = 30;
+
 import { AVL_ID_MAP } from "../services/TelemetryService";
 
 interface HistoryPayload {
@@ -29,12 +32,12 @@ interface HistoryPayload {
 }
 
 // Add this interface to your existing interfaces
-interface CollisionAlertEvent {
-  type: "collision_alert";
-  imei: string;
-  timestamp: number;
-  alert: CollisionAlert;
-}
+// interface CollisionAlertEvent {
+//   type: "collision_alert";
+//   imei: string;
+//   timestamp: number;
+//   alert: CollisionAlert;
+// }
 
 interface SpeedReportPayload extends HistoryPayload {
   speedLimitKph: number;
@@ -120,12 +123,12 @@ export class RealTimeService {
         this.handleDisconnection(socket, reason)
       );
 
-      socket.on("update_collision_status", (data: any) =>
-        this.handleCollisionStatusUpdate(socket, data)
-      );
-      socket.on("get_collision_history", (data: any) =>
-        this.handleGetCollisionHistory(socket, data)
-      );
+      // socket.on("update_collision_status", (data: any) =>
+      //   this.handleCollisionStatusUpdate(socket, data)
+      // );
+      // socket.on("get_collision_history", (data: any) =>
+      //   this.handleGetCollisionHistory(socket, data)
+      // );
 
       socket.on("fuel_level_history", (data: HistoryPayload) =>
         this.handleGetFuelLevelHistory(socket, data)
@@ -194,6 +197,7 @@ export class RealTimeService {
         );
 
         this.handleWorkingHour(newTelemetryDoc.imei, newTelemetryDoc);
+        this.handleCollisionByDeceleration(newTelemetryDoc.imei);
 
         // Prepare the payload for the clients (watchers)
         const telemetryData = this.mapToTelemetryData(newTelemetryDoc);
@@ -476,13 +480,13 @@ export class RealTimeService {
       // 🟢 NEW: Check for collision alerts
       const collisionAlert = ingestResult.data?.collisionAlert;
       // Only call handleCollisionAlert if collisionAlert is an object and not a boolean
-      if (
-        collisionAlert &&
-        typeof collisionAlert === "object" &&
-        !Array.isArray(collisionAlert)
-      ) {
-        await this.handleCollisionAlert(imei, collisionAlert);
-      }
+      // if (
+      //   collisionAlert &&
+      //   typeof collisionAlert === "object" &&
+      //   !Array.isArray(collisionAlert)
+      // ) {
+      //   await this.handleCollisionAlert(imei, collisionAlert);
+      // }
 
       const event: RealTimeTelemetryEvent = {
         type: "telemetry_update",
@@ -505,213 +509,213 @@ export class RealTimeService {
     }
   }
 
-  // 🟢 NEW: Handle collision alerts
-  private async handleCollisionAlert(
-    imei: string,
-    alert: CollisionAlert
-  ): Promise<void> {
-    try {
-      console.log(
-        `[Collision Alert] 🚨 ${alert.severity.toUpperCase()} collision detected for device ${imei}`
-      );
+  // // 🟢 NEW: Handle collision alerts
+  // private async handleCollisionAlert(
+  //   imei: string,
+  //   alert: CollisionAlert
+  // ): Promise<void> {
+  //   try {
+  //     console.log(
+  //       `[Collision Alert] 🚨 ${alert.severity.toUpperCase()} collision detected for device ${imei}`
+  //     );
 
-      // Find device owner
-      const device = await Device.findOne({ imei });
-      if (!device || !device.user) {
-        console.error(
-          `[Collision Alert] ❌ Device ${imei} not found or has no owner`
-        );
-        return;
-      }
+  //     // Find device owner
+  //     const device = await Device.findOne({ imei });
+  //     if (!device || !device.user) {
+  //       console.error(
+  //         `[Collision Alert] ❌ Device ${imei} not found or has no owner`
+  //       );
+  //       return;
+  //     }
 
-      // Create collision event for notification
-      const collisionEvent = {
-        id: alert.id,
-        imei: alert.imei,
-        timestamp: alert.timestamp,
-        severity: alert.severity,
-        location: {
-          latlng: alert.location,
-          address: alert.location,
-        },
-        vehicleInfo: {
-          speed: 0, // You'll need to extract this from your telemetry
-          rpm: 0,
-          direction: 0,
-        },
-        accelerometerData: {
-          x: 0,
-          y: 0,
-          z: 0, // You'll need to extract this from your telemetry
-        },
-        status: "pending" as const,
-        emergencyContacted: alert.severity === "severe",
-      };
+  //     // Create collision event for notification
+  //     const collisionEvent = {
+  //       id: alert.id,
+  //       imei: alert.imei,
+  //       timestamp: alert.timestamp,
+  //       severity: alert.severity,
+  //       location: {
+  //         latlng: alert.location,
+  //         address: alert.location,
+  //       },
+  //       vehicleInfo: {
+  //         speed: 0, // You'll need to extract this from your telemetry
+  //         rpm: 0,
+  //         direction: 0,
+  //       },
+  //       accelerometerData: {
+  //         x: 0,
+  //         y: 0,
+  //         z: 0, // You'll need to extract this from your telemetry
+  //       },
+  //       status: "pending" as const,
+  //       emergencyContacted: alert.severity === "severe",
+  //     };
 
-      // Create notification
-      const notification =
-        await this.notificationService.createCollisionNotification(
-          collisionEvent,
-          device.user.toString()
-        );
+  //     // Create notification
+  //     const notification =
+  //       await this.notificationService.createCollisionNotification(
+  //         collisionEvent,
+  //         device.user.toString()
+  //       );
 
-      const collisionEventData = {
-        type: "collision_alert",
-        imei,
-        timestamp: alert.timestamp,
-        alert,
-      };
+  //     const collisionEventData = {
+  //       type: "collision_alert",
+  //       imei,
+  //       timestamp: alert.timestamp,
+  //       alert,
+  //     };
 
-      // Send real-time collision alert to watchers
-      const watchRoom = `watch:${imei}`;
-      this.io.to(watchRoom).emit("collision_alert", collisionEventData);
+  //     // Send real-time collision alert to watchers
+  //     const watchRoom = `watch:${imei}`;
+  //     this.io.to(watchRoom).emit("collision_alert", collisionEventData);
 
-      // Send notification to user's devices
-      const userRoom = `user:${device.user}`;
-      this.io.to(userRoom).emit("notification", {
-        type: "new_notification",
-        notification: {
-          ...notification,
-          date: new Date(notification.timestamp).toLocaleDateString(),
-          time: new Date(notification.timestamp).toLocaleTimeString(),
-          icon: "🚗",
-          color: notification.severity === "critical" ? "#EF4444" : "#F59E0B",
-        },
-      });
+  //     // Send notification to user's devices
+  //     const userRoom = `user:${device.user}`;
+  //     this.io.to(userRoom).emit("notification", {
+  //       type: "new_notification",
+  //       notification: {
+  //         ...notification,
+  //         date: new Date(notification.timestamp).toLocaleDateString(),
+  //         time: new Date(notification.timestamp).toLocaleTimeString(),
+  //         icon: "🚗",
+  //         color: notification.severity === "critical" ? "#EF4444" : "#F59E0B",
+  //       },
+  //     });
 
-      // For severe collisions, broadcast to emergency channels
-      if (alert.severity === "severe") {
-        this.io.emit("emergency_collision", {
-          ...collisionEventData,
-          priority: "HIGH",
-          emergencyResponse: true,
-        });
-      }
+  //     // For severe collisions, broadcast to emergency channels
+  //     if (alert.severity === "severe") {
+  //       this.io.emit("emergency_collision", {
+  //         ...collisionEventData,
+  //         priority: "HIGH",
+  //         emergencyResponse: true,
+  //       });
+  //     }
 
-      console.log(
-        `[Collision Alert] 📡 Collision alert and notification sent for ${imei} - Severity: ${alert.severity}`
-      );
-    } catch (error) {
-      console.error(
-        `[Collision Alert] ❌ Error handling collision alert for ${imei}:`,
-        error
-      );
-    }
-  }
+  //     console.log(
+  //       `[Collision Alert] 📡 Collision alert and notification sent for ${imei} - Severity: ${alert.severity}`
+  //     );
+  //   } catch (error) {
+  //     console.error(
+  //       `[Collision Alert] ❌ Error handling collision alert for ${imei}:`,
+  //       error
+  //     );
+  //   }
+  // }
 
-  // 🟢 NEW: Event handler for collision status updates
-  private async handleCollisionStatusUpdate(
-    socket: Socket<any, any, any, SocketData>,
-    data: {
-      imei: string;
-      collisionId: string;
-      status: "confirmed" | "false_alarm";
-      responseTime?: number;
-    }
-  ): Promise<void> {
-    try {
-      const { imei, collisionId, status, responseTime } = data;
-      const user = socket.data.user;
+  // // 🟢 NEW: Event handler for collision status updates
+  // private async handleCollisionStatusUpdate(
+  //   socket: Socket<any, any, any, SocketData>,
+  //   data: {
+  //     imei: string;
+  //     collisionId: string;
+  //     status: "confirmed" | "false_alarm";
+  //     responseTime?: number;
+  //   }
+  // ): Promise<void> {
+  //   try {
+  //     const { imei, collisionId, status, responseTime } = data;
+  //     const user = socket.data.user;
 
-      // Authentication check
-      if (!user) {
-        throw new CustomError("Authentication required.", 401);
-      }
+  //     // Authentication check
+  //     if (!user) {
+  //       throw new CustomError("Authentication required.", 401);
+  //     }
 
-      // Authorization check
-      const device = await Device.findOne({ imei, user: user.userId });
-      if (!device) {
-        throw new CustomError(`Access denied to device ${imei}.`, 403);
-      }
+  //     // Authorization check
+  //     const device = await Device.findOne({ imei, user: user.userId });
+  //     if (!device) {
+  //       throw new CustomError(`Access denied to device ${imei}.`, 403);
+  //     }
 
-      // Update collision status
-      await this.telemetryService.updateCollisionStatus(
-        imei,
-        collisionId,
-        status,
-        responseTime
-      );
+  //     // Update collision status
+  //     await this.telemetryService.updateCollisionStatus(
+  //       imei,
+  //       collisionId,
+  //       status,
+  //       responseTime
+  //     );
 
-      // Notify all watchers about the status update
-      const watchRoom = `watch:${imei}`;
-      this.io.to(watchRoom).emit("collision_status_updated", {
-        imei,
-        collisionId,
-        status,
-        updatedBy: user.email,
-        timestamp: Date.now(),
-      });
+  //     // Notify all watchers about the status update
+  //     const watchRoom = `watch:${imei}`;
+  //     this.io.to(watchRoom).emit("collision_status_updated", {
+  //       imei,
+  //       collisionId,
+  //       status,
+  //       updatedBy: user.email,
+  //       timestamp: Date.now(),
+  //     });
 
-      socket.emit("collision_status_update_success", {
-        message: `Collision status updated to ${status}`,
-        collisionId,
-        status,
-      });
+  //     socket.emit("collision_status_update_success", {
+  //       message: `Collision status updated to ${status}`,
+  //       collisionId,
+  //       status,
+  //     });
 
-      console.log(
-        `[Collision Status] ✅ User ${user.email} updated collision ${collisionId} status to ${status}`
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to update collision status";
-      const errorCode = error instanceof CustomError ? error.statusCode : 500;
+  //     console.log(
+  //       `[Collision Status] ✅ User ${user.email} updated collision ${collisionId} status to ${status}`
+  //     );
+  //   } catch (error) {
+  //     const errorMessage =
+  //       error instanceof Error
+  //         ? error.message
+  //         : "Failed to update collision status";
+  //     const errorCode = error instanceof CustomError ? error.statusCode : 500;
 
-      console.error(`[Collision Status] ❌ Error: ${errorMessage}`);
-      socket.emit("error", {
-        message: "Failed to update collision status",
-        details: errorMessage,
-        code: errorCode,
-      });
-    }
-  }
+  //     console.error(`[Collision Status] ❌ Error: ${errorMessage}`);
+  //     socket.emit("error", {
+  //       message: "Failed to update collision status",
+  //       details: errorMessage,
+  //       code: errorCode,
+  //     });
+  //   }
+  // }
 
-  // 🟢 NEW: Get collision history for a device
-  private async handleGetCollisionHistory(
-    socket: Socket<any, any, any, SocketData>,
-    data: { imei: string; limit?: number }
-  ): Promise<void> {
-    try {
-      const { imei, limit = 10 } = data;
-      const user = socket.data.user;
+  // // 🟢 NEW: Get collision history for a device
+  // private async handleGetCollisionHistory(
+  //   socket: Socket<any, any, any, SocketData>,
+  //   data: { imei: string; limit?: number }
+  // ): Promise<void> {
+  //   try {
+  //     const { imei, limit = 10 } = data;
+  //     const user = socket.data.user;
 
-      // Authentication check
-      if (!user) {
-        throw new CustomError("Authentication required.", 401);
-      }
+  //     // Authentication check
+  //     if (!user) {
+  //       throw new CustomError("Authentication required.", 401);
+  //     }
 
-      // Authorization check
-      const device = await Device.findOne({ imei, user: user.userId });
-      if (!device) {
-        throw new CustomError(`Access denied to device ${imei}.`, 403);
-      }
+  //     // Authorization check
+  //     const device = await Device.findOne({ imei, user: user.userId });
+  //     if (!device) {
+  //       throw new CustomError(`Access denied to device ${imei}.`, 403);
+  //     }
 
-      const collisionHistory = await this.telemetryService.getCollisionHistory(
-        imei,
-        limit
-      );
+  //     const collisionHistory = await this.telemetryService.getCollisionHistory(
+  //       imei,
+  //       limit
+  //     );
 
-      socket.emit("collision_history", {
-        imei,
-        collisions: collisionHistory,
-        timestamp: Date.now(),
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to get collision history";
-      const errorCode = error instanceof CustomError ? error.statusCode : 500;
+  //     socket.emit("collision_history", {
+  //       imei,
+  //       collisions: collisionHistory,
+  //       timestamp: Date.now(),
+  //     });
+  //   } catch (error) {
+  //     const errorMessage =
+  //       error instanceof Error
+  //         ? error.message
+  //         : "Failed to get collision history";
+  //     const errorCode = error instanceof CustomError ? error.statusCode : 500;
 
-      console.error(`[Collision History] ❌ Error: ${errorMessage}`);
-      socket.emit("error", {
-        message: "Failed to get collision history",
-        details: errorMessage,
-        code: errorCode,
-      });
-    }
-  }
+  //     console.error(`[Collision History] ❌ Error: ${errorMessage}`);
+  //     socket.emit("error", {
+  //       message: "Failed to get collision history",
+  //       details: errorMessage,
+  //       code: errorCode,
+  //     });
+  //   }
+  // }
 
   private async handleGetFuelLevelHistory(
     socket: Socket<any, any, any, SocketData>,
@@ -913,19 +917,19 @@ export class RealTimeService {
     }
   }
 
-  public broadcastCollisionAlert(imei: string, alert: CollisionAlert): void {
-    const watchRoom = `watch:${imei}`;
-    console.log(
-      `[Broadcast] 🚨 Broadcasting collision alert to room '${watchRoom}'.`
-    );
+  // public broadcastCollisionAlert(imei: string, alert: CollisionAlert): void {
+  //   const watchRoom = `watch:${imei}`;
+  //   console.log(
+  //     `[Broadcast] 🚨 Broadcasting collision alert to room '${watchRoom}'.`
+  //   );
 
-    this.io.to(watchRoom).emit("collision_alert", {
-      type: "collision_alert",
-      imei,
-      timestamp: Date.now(),
-      alert,
-    });
-  }
+  //   this.io.to(watchRoom).emit("collision_alert", {
+  //     type: "collision_alert",
+  //     imei,
+  //     timestamp: Date.now(),
+  //     alert,
+  //   });
+  // }
 
   public broadcastToAll(event: string, data: any): void {
     console.log(`[Broadcast] 📢 Broadcasting event '${event}' to ALL clients.`);
@@ -1029,11 +1033,131 @@ export class RealTimeService {
           status: "danger",
           message: `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`,
         });
-
-        // Here you can handle the logic for when the device is outside working hours
-        // For example, you might want to log this or send a notification
       }
     }
     // }
+  }
+
+  private async handleCollisionByDeceleration(imei: string): Promise<any> {
+    const device = await Device.findOne({ imei });
+    if (!device) {
+      console.log(`Device with IMEI ${imei} not found.`);
+      return;
+    }
+
+    const recentTelemetry = await Telemetry.find({ imei })
+      .sort({ "state.reported.ts": -1 })
+      .limit(2)
+      .lean() // Use .lean() to get plain JavaScript objects instead of Mongoose Documents
+      .exec();
+
+    // Ensure we have two points to compare
+    if (recentTelemetry.length < 2) {
+      console.log(
+        `Not enough telemetry data to detect collision for IMEI ${imei}.`
+      );
+      return false;
+    }
+
+    // 2. FIX: Convert Mongoose Documents to plain objects to fix TS errors.
+    // The first document in the sorted result is the most recent one.
+
+    const currentTelemetry = recentTelemetry[0];
+    const previousTelemetry = recentTelemetry[1];
+
+    const previousPoint = previousTelemetry?.state?.reported as any;
+    const currentPoint = currentTelemetry?.state?.reported as any;
+
+    console.log("Full: ", recentTelemetry);
+
+    console.log("currentTelemetry: ", currentTelemetry);
+    console.log("previousTelemetry: ", previousTelemetry);
+
+    console.log("currentPoint: ", currentPoint);
+    console.log("previousPoint: ", previousPoint);
+
+    if (!previousPoint || !currentPoint) {
+      console.log(`Telemetry data is malformed for IMEI ${imei}.`);
+      return false;
+    }
+    console.log(currentPoint);
+
+    // Use OBD speed (37) or GPS speed ('sp') as a fallback
+
+    const currentSpeed = currentPoint[AVL_ID_MAP.SPEED];
+    const previousSpeed = previousPoint[AVL_ID_MAP.SPEED];
+
+    const currentTimestamp = currentPoint[AVL_ID_MAP.TIMESTAMP];
+    const previousTimestamp = previousPoint[AVL_ID_MAP.TIMESTAMP];
+
+    if (
+      currentSpeed === null ||
+      currentSpeed === undefined ||
+      previousSpeed === null ||
+      previousSpeed === undefined ||
+      !currentTimestamp ||
+      !previousTimestamp
+    ) {
+      return false;
+    }
+
+    const timeDeltaSeconds = (currentTimestamp - previousTimestamp) / 1000;
+
+    if (timeDeltaSeconds <= 0 || timeDeltaSeconds > 10) {
+      // Increased to 10s to be safer
+      return false;
+    }
+
+    const speedDeltaKph = previousSpeed - currentSpeed;
+
+    if (speedDeltaKph <= 0) {
+      return false;
+    }
+
+    const deceleration = speedDeltaKph / timeDeltaSeconds;
+
+    if (
+      deceleration >= COLLISION_DECELERATION_THRESHOLD_KPH_S &&
+      currentSpeed < 5
+    ) {
+      console.log(
+        `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
+          `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`
+      );
+
+      const device = await Device.findOne({ imei }).lean(); // .lean() is efficient if you only need the data
+      if (!device) {
+        console.log(
+          `Device with IMEI ${imei} not found during alert creation.`
+        );
+        return false;
+      }
+
+      // 3. FIX: Access latlng from the plain object `currentPoint`
+      const latLng = currentPoint[AVL_ID_MAP.LAT_LNG];
+      const lat = latLng ? latLng.split(",")[0] : null;
+      const lng = latLng ? latLng.split(",")[1] : null;
+
+      const now = new Date();
+
+      // 4. FIX: Use the ICollisionAlert interface for type safety
+      const collisionAlert = {
+        device: device._id.toString(), // _id is available on the lean object
+        timestamp: now,
+        location: { lat, lng },
+        message:
+          `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
+          `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`,
+        // 5. FIX: Pass the plain object `currentPoint` to your mapping function
+        data: currentPoint,
+        speed: currentSpeed,
+        rpm: currentPoint[AVL_ID_MAP.RPM] || 0,
+      };
+
+      await CollisionAlert.create(collisionAlert);
+      return true;
+    }
+
+    return false;
   }
 }

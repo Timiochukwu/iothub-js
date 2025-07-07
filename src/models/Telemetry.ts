@@ -2,7 +2,14 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface ITelemetry extends Document {
   _id: Types.ObjectId;
+  // imei: string;
+
   imei: string;
+  state: {
+    reported: {
+      [key: string]: any;
+    };
+  };
   timestamp: number;
   tirePressure?: number;
   speed?: number;
@@ -24,7 +31,7 @@ export interface ITelemetry extends Document {
   updatedAt: Date;
 }
 
-const TelemetrySchema = new Schema<ITelemetry>(
+const TelemetrySchema = new Schema<any>(
   {
     imei: { type: String, required: true, index: true },
     timestamp: { type: Number, required: true, index: true },
