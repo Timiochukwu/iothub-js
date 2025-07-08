@@ -30,6 +30,7 @@ import engineHealthRoutes from "./routes/engineHealthRoutes";
 import tirePressureRoutes from "./routes/tirePressureRoutes";
 import drivingBehaviorRoutes from "./routes/drivingBehaviorRoutes";
 import batteryAnalyticsRoutes from "./routes/batteryAnalyticsRoutes";
+import speedAlertRoutes from "./routes/speedAlertRoutes";
 
 import path from "path";
 
@@ -150,6 +151,8 @@ apiRouter.use("/engine", engineHealthRoutes);
 apiRouter.use("/tire-pressure", tirePressureRoutes);
 apiRouter.use("/driving", drivingBehaviorRoutes);
 apiRouter.use("/battery", batteryAnalyticsRoutes);
+apiRouter.use("/speed", speedAlertRoutes);
+
 
 // Mount the entire API logic on the '/api' path.
 app.use("/api", apiRouter);

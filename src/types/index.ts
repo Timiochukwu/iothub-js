@@ -160,6 +160,69 @@ export interface CombinedAnalyticsPoint {
   engine_health_data: EngineHealthData | null;
 }
 
+export interface SpeedAlertConfig {
+  speedLimitKph: number;
+  rapidAccelThresholdKph: number;
+  rapidDecelThresholdKph: number;
+  timeWindowSeconds: number;
+  sustainedSpeedingSeconds: number;
+  geofenceId?: string;
+  routeId?: string;
+}
+
+export interface SpeedViolation {
+  type: 'SPEEDING' | 'RAPID_ACCELERATION' | 'RAPID_DECELERATION';
+  timestamp: number;
+  duration: number; // seconds
+  maxSpeed: number;
+  speedLimit: number;
+  location: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+}
+
+export interface DailySpeedReport {
+  date: string;
+  ignitionStatus: string;
+  distance: number; // km
+  drivingTime: number; // seconds
+  averageSpeed: number; // km/h
+  maximumSpeed: number; // km/h
+  avgRpm: number;
+  speedingViolations: {
+    count: number;
+    totalDistance: number; // km
+    description: string;
+  };
+  rapidAccelerations: {
+    count: number;
+    description: string;
+  };
+  rapidDecelerations: {
+    count: number;
+    description: string;
+  };
+  fuelMileage: {
+    avgMileage: number; // km/L
+    lastTripMileage: number; // km/L
+  };
+  hasData: boolean;
+}
+
+export interface SpeedChartData {
+  date: string;
+  dayName: string;
+  maxSpeed: number;
+  averageSpeed: number;
+  violations: number;
+}
+
+export interface SpeedAlertSummary {
+  todaysReport: DailySpeedReport;
+  speedReport: SpeedChartData[];
+  activeAlerts: SpeedViolation[];
+  configuration: SpeedAlertConfig;
+}
+
 export interface User {
   id?: string;
   email: string;
