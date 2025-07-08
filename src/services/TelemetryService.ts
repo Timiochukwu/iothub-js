@@ -6,16 +6,22 @@ import {
   CollisionEvent,
 } from "./CollisionDetectionService";
 
-// const AVL_ID_MAP = {
-//   FUEL_LEVEL: "66",
-//   TOTAL_ODOMETER: "241",
-//   EVENT_IO_ID: "evt",
-//   IGNITION: "239",
-//   EXTERNAL_VOLTAGE: "67",
-//   SPEED: "37",
-//   TIMESTAMP: "ts",
-//   RPM: "36",
-// };
+
+
+// Based on your sample data, fuel level appears to be percentage
+const FUEL_UNIT = 'percentage'; // or 'liters' or 'milliliters'
+
+// Adjust conversion accordingly
+const convertFuelValue = (value : number, unit : string) : number => {
+  switch(unit) {
+    case 'percentage': return value; // Keep as percentage
+    case 'milliliters': return value / 1000; // Convert to liters
+    case 'liters': return value; // Already in liters
+    default: return value;
+  }
+};
+
+
 
 export const AVL_ID_MAP = {
   RPM: "36",
@@ -74,6 +80,65 @@ export const AVL_ID_MAP = {
   VIN: 256, // Vehicle Identification Number
 };
 
+export interface DTCFaultData {
+  faultId: string;
+  timestamp: string;
+  dtcCount: number;
+  suspectedCode: string;      // e.g., "P0217"
+  description: string;        // e.g., "Engine Overheating"
+  severity: string;          // CRITICAL, HIGH, MEDIUM, LOW
+  location: string;          // GPS coordinates
+  symptoms: string[];        // Array of symptoms
+  milDistance: number;       // Distance with MIL on
+  isActive: boolean;
+}
+
+export interface EngineHealthData {
+  date: string;
+  ignitionStatus: string;        // "ON" or "OFF"
+  engineStatus: string;          // "ON" or "OFF" - current engine status
+  avgRpm: number;               // Average RPM
+  temperature: number;          // Coolant temperature in °C
+  oilLevel: string;             // "NORMAL", "LOW", "CRITICAL"
+  speed: number;                // Current speed in km/h
+  activeFaults: number;         // Number of active DTCs
+  dtcFaults: DTCFaultData[];
+  hasData: boolean;
+}
+
+
+export interface DailyTirePressureData {
+  date: string;
+  dayName: string;
+  dayOfWeek: number;
+  chartLabel: string;
+  distanceCovered: number;
+  mainPressure: number;
+  startLocation: string;  
+  endLocation: string; 
+  hasData: boolean;
+}
+
+export interface TripPressureData {
+  tripId: string;
+  startTime: string;
+  endTime: string;
+  startLocation: string;
+  endLocation: string;
+  startPressure: number;
+  endPressure: number;
+  pressureChange: number;
+  distanceKm: number;
+  duration: number; // minutes
+  pressureVariations: PressureVariation[];
+}
+
+export interface PressureVariation {
+  time: string;
+  pressure: number;
+  location: string;
+}
+
 export interface ReportOptions {
   speedLimitKph: number;
   rapidAccelKph: number; // Speed increase threshold
@@ -120,19 +185,40 @@ export interface BatterySummary {
 
 // This interface represents the summary of fuel consumption for a period.
 // export interface FuelSummary {
-//   totalFuelConsumedLiters: number;
+//   : number;
 //   totalDistanceKm: number;
 //   mileageKmL: number;
 // }
 
 // Define the data structure for the report, now including all UI elements
 export interface FuelSummary {
+  startingFuelPercent: number;
+  endingFuelPercent: number;
+  currentFuelLevel: number;           // NEW: Current fuel level %
+  currentFuelLiters: number;          // NEW: Current fuel level in liters
+  startingFuelLiters: number;
+  endingFuelLiters: number;
   totalFuelConsumedLiters: number;
-  totalFuelRefueledLiters: number; // NEW: For the blue bars in the chart
+  estimatedFuelUsed: number;          // NEW: For UI display (9.2L)
+  totalFuelRefueledLiters: number;
   totalDistanceKm: number;
   mileageKmL: number;
-  startingFuel: number; // NEW: For the "Fuel Usage" card
-  endingFuel: number; // NEW: For the "Fuel Usage" card
+  fuelEfficiencyL100km: number;
+  currentIgnitionStatus: number;      // NEW: 1 = ON, 0 = OFF
+  ignitionStatusText: string;         // NEW: "ON" or "OFF"
+  refuelOccurred: boolean;
+  lastUpdateTime: number;             // NEW: Timestamp of last update
+  dataQuality: number;
+}
+
+export interface DailyFuelBarChartData {
+  date: string;                      // "2024-01-15"
+  dayName: string;                   // "Monday"
+  dayOfWeek: number;                 // 1-7 (1=Sunday)
+  chartLabel: string;                // "Monday" (simplified)
+  totalFuelConsumedLiters: number;   // For red bars
+  totalFuelRefueledLiters: number;   // For blue bars
+  hasData: boolean;  
 }
 
 // This is the final, combined data structure for each point in the report.
@@ -141,6 +227,9 @@ export interface CombinedAnalyticsPoint {
   driving_data: DrivingSummary | null;
   fuel_data: FuelSummary | null;
   battery_data: BatterySummary | null;
+  fuel_chart_data: DailyFuelBarChartData | null;
+  tire_pressure_data: DailyTirePressureData | null;
+  engine_health_data: EngineHealthData | null;
 }
 
 /**
@@ -200,6 +289,16 @@ export class TelemetryService {
       const { imei, payload: telemetryPayload } = payload;
       const reported = telemetryPayload.state.reported;
 
+      // Calculate engine status based on ignition, RPM, and speed
+      const ignitionStatus = reported["239"]; // AVL ID 239 for ignition
+      const engineRpm = this.toNumberSafe(reported["36"]);
+      const speed = this.toNumberSafe(reported["24"] || reported.sp);
+      
+      let engineStatus: "ON" | "OFF" = "OFF";
+      if (ignitionStatus === 1 || (engineRpm && engineRpm > 0) || (speed && speed > 0)) {
+        engineStatus = "ON";
+      }
+
       const telemetryData: Partial<TelemetryData> = {
         imei,
         timestamp: reported.ts || Date.now(),
@@ -219,6 +318,7 @@ export class TelemetryService {
         dtc: this.toIntegerSafe(reported["30"]),
         externalVoltage: this.toNumberSafe(reported["66"]),
         totalMileage: this.toNumberSafe(reported["16"]),
+        engineStatus,
       };
 
       const telemetry = new Telemetry(telemetryData);
@@ -1029,6 +1129,7 @@ export class TelemetryService {
     const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
     const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
     const rpmKey = `state.reported.${AVL_ID_MAP.RPM}`;
+  const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`; 
 
     const pipeline: any[] = [
       // 1. Filter for the specific device, time range, and where speed data exists.
@@ -1086,24 +1187,16 @@ export class TelemetryService {
           // Formula: avg_speed * time_delta
           distanceDeltaKm: {
             $cond: {
-              if: { $ne: ["$previousTimestamp", null] },
+              if: { $ne: ["$previousOdometer", null] },
               then: {
-                $multiply: [
-                  {
-                    $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
-                  }, // Avg Speed in km/h
-                  {
-                    $divide: [
-                      // Time in hours
-                      { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
-                      3600000, // ms in an hour
-                    ],
-                  },
-                ],
+                $divide: [
+                  { $subtract: [`$${odometerKey}`, "$previousOdometer"] },
+                  1000 // Convert meters to km if needed
+                ]
               },
-              else: 0,
-            },
-          },
+              else: 0
+            }
+          }
         },
       },
       // 5. Add boolean flags for different event types to make grouping easier.
@@ -1274,205 +1367,6 @@ export class TelemetryService {
     }));
   }
 
-  // public async getDetailedSummary(
-  //   imei: string,
-  //   startDate: Date,
-  //   endDate: Date,
-  //   type: ChartGroupingType,
-  //   options: ReportOptions
-  // ): Promise<DetailedAnalyticsPoint[]> {
-  //   const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
-  //   const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
-  //   const rpmKey = `state.reported.${AVL_ID_MAP.RPM}`;
-
-  //   let groupByFormat: string;
-  //   switch (type) {
-  //     case "weekly":
-  //       groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
-  //       break;
-  //     case "monthly":
-  //       groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
-  //       break;
-  //     case "daily":
-  //     default:
-  //       groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
-  //       break;
-  //   }
-
-  //   const pipeline: any[] = [
-  //     // Steps 1-5: Calculate deltas and flags for EACH telemetry point.
-  //     // This part is identical to the previous getAnalyticsSummary function.
-  //     {
-  //       $match: {
-  //         imei,
-  //         [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
-  //         [speedKey]: { $exists: true, $type: "number" },
-  //       },
-  //     },
-  //     { $sort: { [tsKey]: 1 } },
-  //     {
-  //       $setWindowFields: {
-  //         partitionBy: "$imei",
-  //         sortBy: { [tsKey]: 1 },
-  //         output: {
-  //           previousSpeed: {
-  //             $shift: { output: `$${speedKey}`, by: -1, default: null },
-  //           },
-  //           previousTimestamp: {
-  //             $shift: { output: `$${tsKey}`, by: -1, default: null },
-  //           },
-  //         },
-  //       },
-  //     },
-  //     {
-  //       $addFields: {
-  //         timeDeltaSeconds: {
-  //           $cond: {
-  //             if: { $ne: ["$previousTimestamp", null] },
-  //             then: {
-  //               $divide: [
-  //                 { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
-  //                 1000,
-  //               ],
-  //             },
-  //             else: 0,
-  //           },
-  //         },
-  //         speedDeltaKph: {
-  //           $cond: {
-  //             if: { $ne: ["$previousSpeed", null] },
-  //             then: { $subtract: [`$${speedKey}`, "$previousSpeed"] },
-  //             else: 0,
-  //           },
-  //         },
-  //         distanceDeltaKm: {
-  //           $cond: {
-  //             if: { $ne: ["$previousTimestamp", null] },
-  //             then: {
-  //               $multiply: [
-  //                 {
-  //                   $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
-  //                 },
-  //                 {
-  //                   $divide: [
-  //                     { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
-  //                     3600000,
-  //                   ],
-  //                 },
-  //               ],
-  //             },
-  //             else: 0,
-  //           },
-  //         },
-  //       },
-  //     },
-  //     {
-  //       $addFields: {
-  //         isMoving: { $gt: [`$${speedKey}`, 0] },
-  //         isSpeeding: { $gt: [`$${speedKey}`, options.speedLimitKph] },
-  //         isRapidAccel: {
-  //           $and: [
-  //             { $ne: ["$previousTimestamp", null] },
-  //             { $gt: ["$speedDeltaKph", options.rapidAccelKph] },
-  //             { $lte: ["$timeDeltaSeconds", options.rapidAccelSeconds] },
-  //           ],
-  //         },
-  //         isRapidDecel: {
-  //           $and: [
-  //             { $ne: ["$previousTimestamp", null] },
-  //             { $lt: ["$speedDeltaKph", -options.rapidDecelKph] },
-  //             { $lte: ["$timeDeltaSeconds", options.rapidDecelSeconds] },
-  //           ],
-  //         },
-  //       },
-  //     },
-
-  //     // --- CRITICAL CHANGE HERE ---
-  //     // 6. Group all points into BUCKETS (daily, weekly, or monthly) and calculate summaries for each bucket.
-  //     {
-  //       $group: {
-  //         // Group by the selected date format instead of _id: null
-  //         _id: {
-  //           $dateToString: {
-  //             format: groupByFormat,
-  //             date: { $toDate: `$${tsKey}` },
-  //             timezone: "UTC", // Specify timezone to avoid inconsistencies
-  //           },
-  //         },
-  //         // The summary calculations are the same, but now they apply per-group.
-  //         totalDistanceKm: { $sum: "$distanceDeltaKm" },
-  //         totalDrivingTimeSeconds: {
-  //           $sum: { $cond: ["$isMoving", "$timeDeltaSeconds", 0] },
-  //         },
-  //         maxSpeedKph: { $max: `$${speedKey}` },
-  //         movingSpeeds: {
-  //           $push: { $cond: ["$isMoving", `$${speedKey}`, "$$REMOVE"] },
-  //         },
-  //         movingRpms: {
-  //           $push: { $cond: ["$isMoving", `$${rpmKey}`, "$$REMOVE"] },
-  //         },
-  //         speedingCount: { $sum: { $cond: ["$isSpeeding", 1, 0] } },
-  //         speedingDistanceKm: {
-  //           $sum: { $cond: ["$isSpeeding", "$distanceDeltaKm", 0] },
-  //         },
-  //         rapidAccelCount: { $sum: { $cond: ["$isRapidAccel", 1, 0] } },
-  //         rapidDecelCount: { $sum: { $cond: ["$isRapidDecel", 1, 0] } },
-  //       },
-  //     },
-
-  //     // 7. Project into the final desired shape for the API.
-  //     {
-  //       $project: {
-  //         _id: 0,
-  //         label: "$_id", // The date/week/month string
-  //         summary: {
-  //           // Nest all the details into a summary object
-  //           totalDistanceKm: "$totalDistanceKm",
-  //           totalDrivingTimeSeconds: "$totalDrivingTimeSeconds",
-  //           maxSpeedKph: "$maxSpeedKph",
-  //           averageMovingSpeedKph: { $avg: "$movingSpeeds" },
-  //           averageRpm: { $avg: "$movingRpms" },
-  //           speedingCount: "$speedingCount",
-  //           speedingDistanceKm: "$speedingDistanceKm",
-  //           rapidAccelCount: "$rapidAccelCount",
-  //           rapidDecelCount: "$rapidDecelCount",
-  //         },
-  //       },
-  //     },
-  //     // 8. Sort the final report by the label (date/week/month).
-  //     { $sort: { label: 1 } },
-  //   ];
-
-  //   const results = await Telemetry.aggregate(pipeline);
-
-  //   if (!results || results.length === 0) {
-  //     return []; // Return an empty array if no data
-  //   }
-
-  //   // Clean up numbers for each point in the report
-  //   return results.map((point) => ({
-  //     label: point.label,
-  //     summary: {
-  //       totalDistanceKm: parseFloat(
-  //         point.summary.totalDistanceKm?.toFixed(2) ?? 0
-  //       ),
-  //       totalDrivingTimeSeconds: Math.round(
-  //         point.summary.totalDrivingTimeSeconds ?? 0
-  //       ),
-  //       maxSpeedKph: parseFloat(point.summary.maxSpeedKph?.toFixed(2) ?? 0),
-  //       averageMovingSpeedKph: parseFloat(
-  //         point.summary.averageMovingSpeedKph?.toFixed(2) ?? 0
-  //       ),
-  //       averageRpm: Math.round(point.summary.averageRpm ?? 0),
-  //       speedingCount: point.summary.speedingCount ?? 0,
-  //       speedingDistanceKm: parseFloat(
-  //         point.summary.speedingDistanceKm?.toFixed(2) ?? 0
-  //       ),
-  //       rapidAccelCount: point.summary.rapidAccelCount ?? 0,
-  //       rapidDecelCount: point.summary.rapidDecelCount ?? 0,
-  //     },
-  //   }));
-  // }
 
   public async getCombinedAnalyticsReport(
     imei: string,
@@ -1482,11 +1376,14 @@ export class TelemetryService {
     options: ReportOptions
   ): Promise<CombinedAnalyticsPoint[]> {
     // 1. Fetch both reports in parallel for maximum efficiency
-    const [drivingReportMap, fuelReportMap, batteryReportMap] =
+    const [drivingReportMap, fuelReportMap, batteryReportMap, fuelBarChartMap, tirePressureMap, engineHealthMap] =
       await Promise.all([
         this._getDrivingBehaviorReport(imei, startDate, endDate, type, options),
         this._getFuelAnalyticsReport(imei, startDate, endDate, type),
         this._getBatteryAnalyticsReport(imei, startDate, endDate, type),
+        this._getDailyFuelBarChartData(imei, startDate, endDate, type),
+        this._getDailyTirePressureData(imei, startDate, endDate, type),
+        this._getEngineHealthData(imei, startDate, endDate, type),
       ]);
 
     // 2. Merge the two reports using their labels (dates/weeks/months) as keys
@@ -1499,6 +1396,9 @@ export class TelemetryService {
         driving_data: summary,
         fuel_data: null,
         battery_data: null,
+        fuel_chart_data: null,
+        tire_pressure_data: null,
+        engine_health_data: null, 
       });
     }
 
@@ -1514,6 +1414,9 @@ export class TelemetryService {
           driving_data: null,
           fuel_data: summary,
           battery_data: null,
+          fuel_chart_data: null,
+          tire_pressure_data: null,
+          engine_health_data: null, 
         });
       }
     }
@@ -1530,6 +1433,60 @@ export class TelemetryService {
           driving_data: null,
           fuel_data: null,
           battery_data: summary,
+        fuel_chart_data: null,
+        tire_pressure_data: null,
+        engine_health_data: null, 
+        });
+      }
+    }
+
+    for (const [label, summary] of fuelBarChartMap.entries()) {
+      const existingEntry = combinedReport.get(label);
+      if (existingEntry) {
+        existingEntry.fuel_chart_data = summary;
+      } else {
+        combinedReport.set(label, {
+          label,
+          driving_data: null,
+          fuel_data: null,
+          battery_data: null,
+          fuel_chart_data: summary,
+          tire_pressure_data: null,
+          engine_health_data: null, 
+        });
+      }
+    }
+
+    for (const [label, summary] of tirePressureMap.entries()) {
+      const existingEntry = combinedReport.get(label);
+      if (existingEntry) {
+        existingEntry.tire_pressure_data = summary;
+      } else {
+        combinedReport.set(label, {
+          label,
+          driving_data: null,
+          fuel_data: null,
+          battery_data: null,
+          fuel_chart_data: null,
+          tire_pressure_data: summary,
+          engine_health_data: null, 
+        });
+      }
+    }
+
+    for (const [label, summary] of engineHealthMap.entries()) {
+      const existingEntry = combinedReport.get(label);
+      if (existingEntry) {
+        existingEntry.engine_health_data = summary;
+      } else {
+        combinedReport.set(label, {
+          label,
+          driving_data: null,
+          fuel_data: null,
+          battery_data: null,
+          fuel_chart_data: null,
+          tire_pressure_data: null,
+          engine_health_data: summary,
         });
       }
     }
@@ -1549,6 +1506,189 @@ export class TelemetryService {
    * [PRIVATE] Generates a time-bucketed report for driving behavior.
    * Returns a Map for easy merging.
    */
+
+
+  private async _getEngineHealthData(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType
+  ): Promise<Map<string, EngineHealthData>> {
+    
+    const tsKey = `state.reported.ts`;
+    const ignitionKey = `state.reported.${AVL_ID_MAP.IGNITION}`;
+    const rpmKey = `state.reported.${AVL_ID_MAP.ENGINE_RPM}`;
+    const tempKey = `state.reported.${AVL_ID_MAP.COOLANT_TEMPERATURE}`;
+    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
+    const dtcKey = `state.reported.${AVL_ID_MAP.DTC_COUNT}`;
+  
+    // First, get the latest telemetry record to determine current status
+    const latestTelemetry = await Telemetry.findOne({ imei })
+      .sort({ [tsKey]: -1 })
+      .select({
+        [tsKey]: 1,
+        [rpmKey]: 1,
+        [speedKey]: 1,
+        [tempKey]: 1,
+        [dtcKey]: 1,
+        [ignitionKey]: 1
+      });
+    
+    // Determine current ignition status based on latest data
+    let currentIgnitionStatus = "OFF";
+    if (latestTelemetry) {
+      const reported = latestTelemetry.state?.reported;
+      const currentRpm = reported?.[AVL_ID_MAP.ENGINE_RPM];
+      const currentSpeed = reported?.[AVL_ID_MAP.SPEED];
+      const currentIgnition = reported?.[AVL_ID_MAP.IGNITION];
+      
+      if (currentIgnition === 1 || (currentRpm && currentRpm > 0) || (currentSpeed && currentSpeed > 0)) {
+        currentIgnitionStatus = "ON";
+      }
+    }
+  
+    // Now get historical data for analytics
+    const pipeline: any[] = [
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [rpmKey]: { $exists: true },
+          [tempKey]: { $exists: true },
+          [speedKey]: { $exists: true },
+          [dtcKey]: { $exists: true }
+        }
+      },
+      
+      {
+        $group: {
+          _id: null, // Single group for today
+          currentSpeed: { $first: `$${speedKey}` },
+          currentTemp: { $first: `$${tempKey}` },
+          activeFaults: { $first: `$${dtcKey}` },
+          avgRpm: { $avg: `$${rpmKey}` },
+          readingCount: { $sum: 1 }
+        }
+      },
+      
+      {
+        $project: {
+          _id: 0,
+          avgRpm: { $round: ["$avgRpm", 0] },
+          temperature: "$currentTemp",
+          speed: "$currentSpeed",
+          activeFaults: "$activeFaults",
+          oilLevel: {
+            $cond: {
+              if: { $gt: ["$activeFaults", 0] },
+              then: "CHECK_REQUIRED",
+              else: "NORMAL"
+            }
+          },
+          hasData: { $gt: ["$readingCount", 0] }
+        }
+      }
+    ];
+  
+    const results = await Telemetry.aggregate(pipeline);
+    
+    const reportMap = new Map<string, EngineHealthData>();
+    const today = new Date().toISOString().split('T')[0]!;
+    
+    if (results.length > 0) {
+      const data = results[0];
+      reportMap.set(today, {
+        date: today,
+        ignitionStatus: currentIgnitionStatus, // Use the current status we determined
+        engineStatus: currentIgnitionStatus, // Use the same current status for engine status
+        avgRpm: data.avgRpm,
+        temperature: data.temperature,
+        oilLevel: data.oilLevel,
+        speed: data.speed,
+        activeFaults: data.activeFaults,
+        dtcFaults: [],
+        hasData: data.hasData
+      });
+    }
+  
+    return reportMap;
+  }
+
+  private async _getActiveDTCs(
+    imei: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<DTCFaultData[]> {
+    
+    const tsKey = `state.reported.ts`;
+    const dtcCountKey = `state.reported.${AVL_ID_MAP.DTC_COUNT}`;
+    const milKey = `state.reported.${AVL_ID_MAP.DISTANCE_TRAVELED_MIL_ON}`;
+    const engineLoadKey = `state.reported.${AVL_ID_MAP.ENGINE_LOAD}`;
+    const coolantTempKey = `state.reported.${AVL_ID_MAP.COOLANT_TEMPERATURE}`;
+    const fuelTrimKey = `state.reported.${AVL_ID_MAP.SHORT_FUEL_TRIM}`;
+    const locationKey = `state.reported.latlng`;
+  
+    const pipeline: any[] = [
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [dtcCountKey]: { $gt: 0 }, // Only records with active DTCs
+        }
+      },
+      
+      { $sort: { [tsKey]: -1 } },
+      
+      {
+        $project: {
+          _id: 0,
+          timestamp: `$${tsKey}`,
+          dtcCount: `$${dtcCountKey}`,
+          milDistance: `$${milKey}`,
+          engineLoad: `$${engineLoadKey}`,
+          coolantTemp: `$${coolantTempKey}`,
+          fuelTrim: `$${fuelTrimKey}`,
+          location: `$${locationKey}`,
+          
+          // Analyze symptoms to guess fault type
+          suspectedFault: {
+            $switch: {
+              branches: [
+                {
+                  case: { $gt: [`$${coolantTempKey}`, 105] },
+                  then: "COOLING_SYSTEM"
+                },
+                {
+                  case: { $gt: [{ $abs: `$${fuelTrimKey}` }, 15] },
+                  then: "FUEL_SYSTEM"
+                },
+                {
+                  case: { $gt: [`$${engineLoadKey}`, 85] },
+                  then: "ENGINE_PERFORMANCE"
+                }
+              ],
+              default: "UNKNOWN"
+            }
+          }
+        }
+      }
+    ];
+  
+    const results = await Telemetry.aggregate(pipeline);
+    
+    return results.map((fault, index) => ({
+      faultId: `DTC_${Date.now()}_${index}`,
+      timestamp: new Date(fault.timestamp).toISOString(),
+      dtcCount: fault.dtcCount,
+      suspectedCode: this._generateSuspectedCode(fault.suspectedFault),
+      description: this._getFaultDescription(fault.suspectedFault),
+      severity: this._getSeverityLevel(fault),
+      location: fault.location,
+      symptoms: this._analyzeSymptoms(fault),
+      milDistance: fault.milDistance,
+      isActive: true
+    }));
+  }
 
   private async _getDrivingBehaviorReport(
     imei: string,
@@ -1757,163 +1897,515 @@ export class TelemetryService {
     return reportMap;
   }
 
-  // /**
-  //  * [PRIVATE] Generates a time-bucketed report for fuel consumption and mileage.
-  //  * Returns a Map for easy merging.
-  //  */
-  // private async _getFuelAnalyticsReport(
-  //   imei: string,
-  //   startDate: Date,
-  //   endDate: Date,
-  //   type: ChartGroupingType
-  // ): Promise<Map<string, FuelSummary>> {
-  //   // Define keys for telemetry fields
-  //   const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
-  //   const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
-  //   const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
 
-  //   // Determine the date format string for the grouping stage
-  //   let groupByFormat: string;
-  //   switch (type) {
-  //     case "weekly":
-  //       groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
-  //       break;
-  //     case "monthly":
-  //       groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
-  //       break;
-  //     case "daily":
-  //     default:
-  //       groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
-  //       break;
-  //   }
+  private async _getDailyTirePressureData(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType
+  ): Promise<Map<string, DailyTirePressureData>> {
+    
+    const tsKey = `state.reported.ts`;
+    const pressureKey = `state.reported.${AVL_ID_MAP.TYRE_PRESSURE}`;
+    const ignitionKey = `state.reported.${AVL_ID_MAP.IGNITION}`;
+    const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
+    const locationKey = `state.reported.latlng`;
+  
+    let groupByFormat: string;
+    switch (type) {
+      case "weekly": groupByFormat = "%Y-%U"; break;
+      case "monthly": groupByFormat = "%Y-%m"; break;
+      case "daily":
+      default: groupByFormat = "%Y-%m-%d"; break;
+    }
+  
+    const pipeline: any[] = [
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [pressureKey]: { $exists: true, $type: "number" },
+          [ignitionKey]: { $exists: true },
+          [odometerKey]: { $exists: true },
+          [locationKey]: { $exists: true }
+        },
+      },
+  
+      { $sort: { [tsKey]: 1 } },
+  
+      // Add trip detection using ignition and movement
+      {
+        $setWindowFields: {
+          partitionBy: "$imei",
+          sortBy: { [tsKey]: 1 },
+          output: {
+            previousIgnition: {
+              $shift: { output: `$${ignitionKey}`, by: -1, default: null }
+            },
+            previousOdometer: {
+              $shift: { output: `$${odometerKey}`, by: -1, default: null }
+            }
+          }
+        }
+      },
+  
+      // Identify trip starts and ends
+      {
+        $addFields: {
+          isTripStart: {
+            $and: [
+              { $eq: [`$${ignitionKey}`, 1] },
+              { $or: [
+                { $eq: ["$previousIgnition", null] },
+                { $eq: ["$previousIgnition", 0] }
+              ]}
+            ]
+          },
+          isTripEnd: {
+            $and: [
+              { $eq: [`$${ignitionKey}`, 0] },
+              { $eq: ["$previousIgnition", 1] }
+            ]
+          }
+        }
+      },
+  
+      // Group by day and collect trip data
+      {
+        $group: {
+          _id: {
+            day: {
+              $dateToString: {
+                format: groupByFormat,
+                date: { $toDate: `$${tsKey}` },
+                timezone: "UTC"
+              }
+            },
+            dayOfWeek: {
+              $dayOfWeek: { $toDate: `$${tsKey}` }
+            }
+          },
+          
+          // Pressure statistics
+          avgPressure: { $avg: `$${pressureKey}` },
+          minPressure: { $min: `$${pressureKey}` },
+          maxPressure: { $max: `$${pressureKey}` },
+          
+          // Trip data
+          tripStarts: {
+            $push: {
+              $cond: [
+                "$isTripStart",
+                {
+                  time: `$${tsKey}`,
+                  pressure: `$${pressureKey}`,
+                  location: `$${locationKey}`,
+                  odometer: `$${odometerKey}`
+                },
+                "$$REMOVE"
+              ]
+            }
+          },
+          
+          tripEnds: {
+            $push: {
+              $cond: [
+                "$isTripEnd",
+                {
+                  time: `$${tsKey}`,
+                  pressure: `$${pressureKey}`,
+                  location: `$${locationKey}`,
+                  odometer: `$${odometerKey}`
+                },
+                "$$REMOVE"
+              ]
+            }
+          },
+          
+          // All pressure readings for variations
+          allReadings: {
+            $push: {
+              time: `$${tsKey}`,
+              pressure: `$${pressureKey}`,
+              location: `$${locationKey}`,
+              odometer: `$${odometerKey}`,
+              ignition: `$${ignitionKey}`
+            }
+          }
+        }
+      },
+  
+      // Process trips and calculate metrics
+      {
+        $addFields: {
+          dayName: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$_id.dayOfWeek", 1] }, then: "Sunday" },
+                { case: { $eq: ["$_id.dayOfWeek", 2] }, then: "Monday" },
+                { case: { $eq: ["$_id.dayOfWeek", 3] }, then: "Tuesday" },
+                { case: { $eq: ["$_id.dayOfWeek", 4] }, then: "Wednesday" },
+                { case: { $eq: ["$_id.dayOfWeek", 5] }, then: "Thursday" },
+                { case: { $eq: ["$_id.dayOfWeek", 6] }, then: "Friday" },
+                { case: { $eq: ["$_id.dayOfWeek", 7] }, then: "Saturday" }
+              ],
+              default: "Unknown"
+            }
+          },
+          
+          // Count pressure drops (pressure decrease > 2)
+          pressureDrops: {
+            $size: {
+              $filter: {
+                input: "$allReadings",
+                cond: {
+                  $and: [
+                    { $gt: ["$$this.pressure", 0] },
+                    { $lt: ["$$this.pressure", { $subtract: ["$maxPressure", 2] }] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+  
+      {
+        $project: {
+          _id: 0,
+          date: "$_id.day",
+          dayName: 1,
+          dayOfWeek: "$_id.dayOfWeek",
+          allReadings: 1,
+          hasData: { $gt: [{ $size: "$allReadings" }, 0] }
+        }
+      },
+  
+      { $sort: { date: 1 } }
+    ];
+  
+    const results = await Telemetry.aggregate(pipeline);
+  
+    // Process results and create trip data
+    const reportMap = new Map<string, DailyTirePressureData>();
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  
+    // Generate all 7 days
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      
+      const dateString = date.toISOString().split('T')[0]!;
+      const dayOfWeek = date.getDay();
+      const dayName = dayNames[dayOfWeek]!;
+      
+      // Find data for this day
+      const dayData = results.find(r => r.date === dateString);
+      
+      if (dayData) {
+        const { distanceCovered, mainPressure, startLocation, endLocation } = this._processTripsFromReadings(dayData);
+        
+        reportMap.set(dateString, {
+          date: dateString,
+          dayName: dayName,
+          dayOfWeek: dayOfWeek + 1,
+          chartLabel: dayName,
+          distanceCovered: distanceCovered,
+          mainPressure: mainPressure,
+          startLocation: startLocation,
+          endLocation: endLocation,
+          hasData: dayData.hasData
+        });
+      } else {
+        reportMap.set(dateString, {
+          date: dateString,
+          dayName: dayName,
+          dayOfWeek: dayOfWeek + 1,
+          chartLabel: dayName,
+          distanceCovered: 0,
+          mainPressure: 0,
+          startLocation: "",
+          endLocation: "",
+          hasData: false
+        });
+      }
+    }
+  
+    return reportMap;
+  }
 
-  //   const pipeline: any[] = [
-  //     // STAGE 1: Filter for the device, time range, and essential data fields.
-  //     {
-  //       $match: {
-  //         imei,
-  //         [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
-  //         [fuelKey]: { $exists: true, $type: "number" },
-  //         [speedKey]: { $exists: true, $type: "number" },
-  //       },
-  //     },
 
-  //     // STAGE 2: Sort documents by timestamp to process them in chronological order.
-  //     { $sort: { [tsKey]: 1 } },
+  private _generateSuspectedCode(faultType: string): string {
+    const codes: { [key: string]: string } = { // Add type annotation
+      'COOLING_SYSTEM': 'P0217',
+      'FUEL_SYSTEM': 'P0171',
+      'ENGINE_PERFORMANCE': 'P0300',
+      'UNKNOWN': 'P0000'
+    };
+    return codes[faultType] || 'P0000';
+  }
+  
+  private _getFaultDescription(faultType: string): string {
+    const descriptions: { [key: string]: string } = { // Add type annotation
+      'COOLING_SYSTEM': 'Engine Overheating Condition',
+      'FUEL_SYSTEM': 'Fuel System Too Lean',
+      'ENGINE_PERFORMANCE': 'Engine Performance Issue',
+      'UNKNOWN': 'Unknown Engine Fault'
+    };
+    return descriptions[faultType] || 'Unknown Engine Fault';
+  }
+  
+  private _getSeverityLevel(fault: any): string {
+    if (fault.coolantTemp > 110) return 'CRITICAL';
+    if (fault.dtcCount > 3) return 'HIGH';
+    if (fault.milDistance > 0) return 'MEDIUM';
+    return 'LOW';
+  }
+  
+  private _analyzeSymptoms(fault: any): string[] {
+    const symptoms = [];
+    if (fault.coolantTemp > 105) symptoms.push('High coolant temperature');
+    if (Math.abs(fault.fuelTrim) > 15) symptoms.push('Fuel trim out of range');
+    if (fault.engineLoad > 85) symptoms.push('High engine load');
+    if (fault.milDistance > 0) symptoms.push('MIL lamp activated');
+    return symptoms;
+  }
 
-  //     // STAGE 3: Use $setWindowFields to get the PREVIOUS values for each field.
-  //     {
-  //       $setWindowFields: {
-  //         partitionBy: "$imei",
-  //         sortBy: { [tsKey]: 1 },
-  //         output: {
-  //           previousSpeed: {
-  //             $shift: { output: `$${speedKey}`, by: -1, default: null },
-  //           },
-  //           previousTimestamp: {
-  //             $shift: { output: `$${tsKey}`, by: -1, default: null },
-  //           },
-  //           previousFuel: {
-  //             $shift: { output: `$${fuelKey}`, by: -1, default: null },
-  //           },
-  //         },
-  //       },
-  //     },
 
-  //     // STAGE 4: Calculate deltas for distance and fuel for each segment.
-  //     {
-  //       $addFields: {
-  //         // Calculate distance for this segment using average speed.
-  //         distanceDeltaKm: {
-  //           $cond: {
-  //             if: { $ne: ["$previousTimestamp", null] },
-  //             then: {
-  //               $multiply: [
-  //                 {
-  //                   $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
-  //                 },
-  //                 {
-  //                   $divide: [
-  //                     { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
-  //                     3600000,
-  //                   ],
-  //                 },
-  //               ],
-  //             },
-  //             else: 0,
-  //           },
-  //         },
-  //         // Calculate fuel consumption. Ignore refills (where fuel level increases).
-  //         // If (previousFuel - currentFuel) is negative, it's a refill, so consumption is 0.
-  //         fuelDeltaLiters: {
-  //           $cond: {
-  //             if: { $ne: ["$previousFuel", null] },
-  //             then: {
-  //               $max: [0, { $subtract: ["$previousFuel", `$${fuelKey}`] }],
-  //             },
-  //             else: 0,
-  //           },
-  //         },
-  //       },
-  //     },
+  private _processTripsFromReadings(dayData: any): { distanceCovered: number; mainPressure: number; startLocation: string; endLocation: string } {
+    const readings = dayData.allReadings || [];
+    
+    if (readings.length === 0) {
+      return { distanceCovered: 0, mainPressure: 0, startLocation: "", endLocation: "" };
+    }
+  
+    // Get first and last readings
+    const firstReading = readings[0];
+    const lastReading = readings[readings.length - 1];
+    
+    // Calculate distance covered
+    const distanceCovered = Math.round(
+      (lastReading.odometer - firstReading.odometer) / 1000 * 100
+    ) / 100;
+  
+    // Get pressure, start and end locations
+    const mainPressure = lastReading.pressure || 0;
+    const startLocation = firstReading.location || "";
+    const endLocation = lastReading.location || "";
+  
+    return { distanceCovered, mainPressure, startLocation, endLocation };
+  }
 
-  //     // STAGE 5: Group the segments into time buckets (daily, weekly, monthly).
-  //     {
-  //       $group: {
-  //         _id: {
-  //           $dateToString: {
-  //             format: groupByFormat,
-  //             date: { $toDate: `$${tsKey}` },
-  //             timezone: "UTC",
-  //           },
-  //         },
-  //         totalFuelConsumedLiters: { $sum: "$fuelDeltaLiters" },
-  //         totalDistanceKm: { $sum: "$distanceDeltaKm" },
-  //       },
-  //     },
 
-  //     // STAGE 6: Project the final format and calculate mileage.
-  //     {
-  //       $project: {
-  //         _id: 0,
-  //         label: "$_id",
-  //         totalFuelConsumedLiters: 1,
-  //         totalDistanceKm: 1,
-  //         // Calculate mileage (km/L), handling division by zero.
-  //         mileageKmL: {
-  //           $cond: {
-  //             if: { $gt: ["$totalFuelConsumedLiters", 0] },
-  //             then: {
-  //               $divide: ["$totalDistanceKm", "$totalFuelConsumedLiters"],
-  //             },
-  //             else: 0,
-  //           },
-  //         },
-  //       },
-  //     },
+  private async _getDailyFuelBarChartData(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType
+  ): Promise<Map<string, DailyFuelBarChartData>> {
+    
+    const tsKey = `state.reported.ts`;
+    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+    const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
+    
+    const FUEL_TANK_CAPACITY_LITERS = 60;
+  
+    let groupByFormat: string;
+    switch (type) {
+      case "weekly": groupByFormat = "%Y-%U"; break;
+      case "monthly": groupByFormat = "%Y-%m"; break;
+      case "daily":
+      default: groupByFormat = "%Y-%m-%d"; break;
+    }
+  
+    // Get actual data from database
+    const pipeline: any[] = [
+      {
+        $match: {
+          imei,
+          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [fuelKey]: { $exists: true, $type: "number", $gte: 0, $lte: 100 },
+          [odometerKey]: { $exists: true, $type: "number" },
+        },
+      },
+  
+      { $sort: { [tsKey]: 1 } },
+  
+      {
+        $group: {
+          _id: {
+            period: {
+              $dateToString: {
+                format: groupByFormat,
+                date: { $toDate: `$${tsKey}` },
+                timezone: "UTC"
+              }
+            },
+            dayOfWeek: {
+              $dayOfWeek: { $toDate: `$${tsKey}` }
+            }
+          },
+          
+          dayStartFuelPercent: { $first: `$${fuelKey}` },
+          dayEndFuelPercent: { $last: `$${fuelKey}` },
+          minFuelPercent: { $min: `$${fuelKey}` },
+          maxFuelPercent: { $max: `$${fuelKey}` },
+          
+          dayStartOdometer: { $first: `$${odometerKey}` },
+          dayEndOdometer: { $last: `$${odometerKey}` },
+          
+          readingCount: { $sum: 1 }
+        }
+      },
+  
+      {
+        $addFields: {
+          dayName: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$_id.dayOfWeek", 1] }, then: "Sunday" },
+                { case: { $eq: ["$_id.dayOfWeek", 2] }, then: "Monday" },
+                { case: { $eq: ["$_id.dayOfWeek", 3] }, then: "Tuesday" },
+                { case: { $eq: ["$_id.dayOfWeek", 4] }, then: "Wednesday" },
+                { case: { $eq: ["$_id.dayOfWeek", 5] }, then: "Thursday" },
+                { case: { $eq: ["$_id.dayOfWeek", 6] }, then: "Friday" },
+                { case: { $eq: ["$_id.dayOfWeek", 7] }, then: "Saturday" }
+              ],
+              default: "Unknown"
+            }
+          },
+          
+          dayStartFuelLiters: {
+            $multiply: ["$dayStartFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
+          },
+          dayEndFuelLiters: {
+            $multiply: ["$dayEndFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
+          },
+          minFuelLiters: {
+            $multiply: ["$minFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
+          },
+          maxFuelLiters: {
+            $multiply: ["$maxFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
+          },
+          
+          dailyDistanceKm: {
+            $divide: [
+              { $subtract: ["$dayEndOdometer", "$dayStartOdometer"] },
+              1000
+            ]
+          }
+        }
+      },
+  
+      {
+        $addFields: {
+          refuelAmount: {
+            $cond: {
+              if: {
+                $gt: [
+                  { $subtract: ["$maxFuelPercent", "$minFuelPercent"] },
+                  8
+                ]
+              },
+              then: { $subtract: ["$maxFuelLiters", "$minFuelLiters"] },
+              else: 0
+            }
+          },
+          
+          netFuelChange: {
+            $subtract: ["$dayEndFuelLiters", "$dayStartFuelLiters"]
+          }
+        }
+      },
+  
+      {
+        $addFields: {
+          totalFuelConsumedLiters: {
+            $cond: {
+              if: { $gt: ["$refuelAmount", 0] },
+              then: {
+                $subtract: ["$refuelAmount", "$netFuelChange"]
+              },
+              else: {
+                $max: [0, { $subtract: ["$dayStartFuelLiters", "$dayEndFuelLiters"] }]
+              }
+            }
+          },
+          
+          totalFuelRefueledLiters: "$refuelAmount"
+        }
+      },
+  
+      {
+        $project: {
+          _id: 0,
+          label: "$_id.period",
+          dayName: 1,
+          dayOfWeek: "$_id.dayOfWeek",
+          totalFuelConsumedLiters: { $round: ["$totalFuelConsumedLiters", 2] },
+          totalFuelRefueledLiters: { $round: ["$totalFuelRefueledLiters", 2] },
+          hasData: { $gt: ["$readingCount", 10] }
+        }
+      },
+  
+      { $sort: { label: 1 } }
+    ];
+  
+    const results = await Telemetry.aggregate(pipeline);
+  
+    // Create a map from database results
+    const dbDataMap = new Map<string, any>();
+    results.forEach((point) => {
+      dbDataMap.set(point.label, point);
+    });
+  
+    // Generate all 7 days of the week
+    const reportMap = new Map<string, DailyFuelBarChartData>();
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    
+    // Generate dates for the last 7 days (including today)
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      
+      const dateString = date.toISOString().split('T')[0]!; // This will never be undefined
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const dayName = dayNames[dayOfWeek]!;
+      
+      // Check if we have actual data for this day
+      const dbData = dbDataMap.get(dateString);
+      
+      if (dbData) {
+        // Use actual data
+        reportMap.set(dateString, {
+          date: dateString,
+          dayName: dayName,
+          dayOfWeek: dayOfWeek + 1, // Convert to 1-7 format (1=Sunday)
+          chartLabel: `${dayName}`,
+          totalFuelConsumedLiters: dbData.totalFuelConsumedLiters || 0,
+          totalFuelRefueledLiters: dbData.totalFuelRefueledLiters || 0,
+          hasData: dbData.hasData || false
+        });
+      } else {
+        // No data for this day - create empty entry
+        reportMap.set(dateString, {
+          date: dateString,
+          dayName: dayName,
+          dayOfWeek: dayOfWeek + 1,
+          chartLabel: `${dayName}`,
+          totalFuelConsumedLiters: 0,
+          totalFuelRefueledLiters: 0,
+          hasData: false
+        });
+      }
+    }
+  
+    return reportMap;
+  }
 
-  //     // STAGE 7: Sort the final report by the label (date/week/month).
-  //     { $sort: { label: 1 } },
-  //   ];
-
-  //   const results = await Telemetry.aggregate(pipeline);
-
-  //   // Map the results to the final Map<string, FuelSummary> structure.
-  //   const reportMap = new Map<string, FuelSummary>();
-
-  //   results.forEach((point) => {
-  //     reportMap.set(point.label, {
-  //       totalFuelConsumedLiters: parseFloat(
-  //         point.totalFuelConsumedLiters?.toFixed(2) ?? 0
-  //       ),
-  //       totalDistanceKm: parseFloat(point.totalDistanceKm?.toFixed(2) ?? 0),
-  //       mileageKmL: parseFloat(point.mileageKmL?.toFixed(2) ?? 0),
-  //     });
-  //   });
-
-  //   return reportMap;
-  // }
-
+ 
   // Assume Telemetry model and AVL_ID_MAP are defined elsewhere
   // e.g., import { Telemetry } from './telemetry.model';
   // e.g., import { AVL_ID_MAP, ChartGroupingType } from './constants';
@@ -1924,176 +2416,239 @@ export class TelemetryService {
     endDate: Date,
     type: ChartGroupingType
   ): Promise<Map<string, FuelSummary>> {
-    // Define keys for telemetry fields
-    const tsKey = `state.reported.${AVL_ID_MAP.TIMESTAMP}`;
-    const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
-    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`; // Assumed to be in Liters
-
-    // Determine the date format string for the grouping stage
+    
+    const tsKey = `state.reported.ts`;
+    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+    const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
+    const ignitionKey = `state.reported.${AVL_ID_MAP.IGNITION}`;
+    
+    const FUEL_TANK_CAPACITY_LITERS = 60;
+  
     let groupByFormat: string;
     switch (type) {
-      case "weekly":
-        groupByFormat = "%Y-%U"; // Year-WeekNumber (e.g., 2023-21)
-        break;
-      case "monthly":
-        groupByFormat = "%Y-%m"; // Year-Month (e.g., 2023-05)
-        break;
+      case "weekly": groupByFormat = "%Y-%U"; break;
+      case "monthly": groupByFormat = "%Y-%m"; break;
       case "daily":
-      default:
-        groupByFormat = "%Y-%m-%d"; // Year-Month-Day (e.g., 2023-05-26)
-        break;
+      default: groupByFormat = "%Y-%m-%d"; break;
     }
-
+  
     const pipeline: any[] = [
-      // STAGE 1: Filter for the device, time range, and essential data fields.
       {
         $match: {
           imei,
           [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
-          [fuelKey]: { $exists: true, $type: "number" },
-          [speedKey]: { $exists: true, $type: "number" },
+          [fuelKey]: { $exists: true, $type: "number", $gte: 0, $lte: 100 },
+          [odometerKey]: { $exists: true, $type: "number" },
         },
       },
-
-      // STAGE 2: Sort documents by timestamp to process them in chronological order.
+  
       { $sort: { [tsKey]: 1 } },
-
-      // STAGE 3: Use $setWindowFields to get the PREVIOUS values for each field.
-      {
-        $setWindowFields: {
-          partitionBy: "$imei",
-          sortBy: { [tsKey]: 1 },
-          output: {
-            previousSpeed: {
-              $shift: { output: `$${speedKey}`, by: -1, default: null },
-            },
-            previousTimestamp: {
-              $shift: { output: `$${tsKey}`, by: -1, default: null },
-            },
-            previousFuel: {
-              $shift: { output: `$${fuelKey}`, by: -1, default: null },
-            },
-          },
-        },
-      },
-
-      // STAGE 4: Calculate deltas for distance, fuel consumed, and fuel refueled.
-      {
-        $addFields: {
-          distanceDeltaKm: {
-            $cond: {
-              if: { $ne: ["$previousTimestamp", null] },
-              then: {
-                $multiply: [
-                  {
-                    $divide: [{ $add: [`$${speedKey}`, "$previousSpeed"] }, 2],
-                  },
-                  {
-                    $divide: [
-                      { $subtract: [`$${tsKey}`, "$previousTimestamp"] },
-                      3600000,
-                    ],
-                  },
-                ],
-              },
-              else: 0,
-            },
-          },
-          fuelDeltaLiters: {
-            // Fuel Consumption (drop in fuel level)
-            $cond: {
-              if: { $ne: ["$previousFuel", null] },
-              then: {
-                $max: [0, { $subtract: ["$previousFuel", `$${fuelKey}`] }],
-              },
-              else: 0,
-            },
-          },
-          // --- NEW: Calculate fuel added (refueling) ---
-          refuelDeltaLiters: {
-            // Fuel Refill (increase in fuel level)
-            $cond: {
-              if: { $ne: ["$previousFuel", null] },
-              then: {
-                $max: [0, { $subtract: [`$${fuelKey}`, "$previousFuel"] }],
-              },
-              else: 0,
-            },
-          },
-        },
-      },
-
-      // STAGE 5: Group the segments into time buckets (daily, weekly, monthly).
+  
       {
         $group: {
           _id: {
-            $dateToString: {
-              format: groupByFormat,
-              date: { $toDate: `$${tsKey}` },
-              timezone: "UTC",
-            },
+            day: {
+              $dateToString: {
+                format: groupByFormat,
+                date: { $toDate: `$${tsKey}` },
+                timezone: "UTC"
+              }
+            }
           },
-          totalFuelConsumedRaw: { $sum: "$fuelDeltaLiters" }, // In mL
-          totalDistanceKm: { $sum: "$distanceDeltaKm" },
-          totalFuelRefueledRaw: { $sum: "$refuelDeltaLiters" }, // In mL
-          startingFuelRaw: { $first: `$${fuelKey}` }, // In mL
-          endingFuelRaw: { $last: `$${fuelKey}` }, // In mL
-        },
+          
+          // Daily start/end values
+          dayStartFuelPercent: { $first: `$${fuelKey}` },
+          dayEndFuelPercent: { $last: `$${fuelKey}` },
+          dayStartOdometer: { $first: `$${odometerKey}` },
+          dayEndOdometer: { $last: `$${odometerKey}` },
+          
+          // Current status (from latest reading)
+          currentFuelLevel: { $last: `$${fuelKey}` },
+          currentIgnitionStatus: { $last: `$${ignitionKey}` },
+          lastUpdateTime: { $last: `$${tsKey}` },
+          
+          // Min/max for refuel detection
+          minFuelPercent: { $min: `$${fuelKey}` },
+          maxFuelPercent: { $max: `$${fuelKey}` },
+          
+          readingCount: { $sum: 1 }
+        }
       },
-
-      // STAGE 6: Project, Calculate, AND CONVERT units
+  
+      {
+        $addFields: {
+          // Convert percentages to liters
+          dayStartFuelLiters: {
+            $multiply: ["$dayStartFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
+          },
+          dayEndFuelLiters: {
+            $multiply: ["$dayEndFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
+          },
+          currentFuelLiters: {
+            $multiply: ["$currentFuelLevel", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
+          },
+          
+          // Distance traveled
+          dailyDistanceKm: {
+            $divide: [
+              { $subtract: ["$dayEndOdometer", "$dayStartOdometer"] },
+              1000
+            ]
+          },
+          
+          // Refuel detection
+          refuelAmount: {
+            $cond: {
+              if: {
+                $gt: [
+                  { $subtract: ["$maxFuelPercent", "$minFuelPercent"] },
+                  8 // 8% increase suggests refueling
+                ]
+              },
+              then: {
+                $multiply: [
+                  { $subtract: ["$maxFuelPercent", "$minFuelPercent"] },
+                  { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }
+                ]
+              },
+              else: 0
+            }
+          }
+        }
+      },
+  
+      {
+        $addFields: {
+          // Calculate actual fuel consumed
+          actualFuelConsumed: {
+            $cond: {
+              if: { $gt: ["$refuelAmount", 0] },
+              then: {
+                // If refueling occurred: consumption = fuel drop + refuel amount
+                $add: [
+                  { $subtract: ["$dayStartFuelLiters", "$dayEndFuelLiters"] },
+                  "$refuelAmount"
+                ]
+              },
+              else: {
+                // No refueling: consumption = fuel drop (if positive)
+                $max: [0, { $subtract: ["$dayStartFuelLiters", "$dayEndFuelLiters"] }]
+              }
+            }
+          },
+          
+          // Estimated fuel consumption based on distance (alternative calculation)
+          estimatedFuelUsed: {
+            $cond: {
+              if: { $gt: ["$dailyDistanceKm", 0] },
+              then: {
+                // Assume average consumption of 10L/100km
+                $multiply: ["$dailyDistanceKm", 0.10]
+              },
+              else: 0
+            }
+          },
+          
+          // Calculate fuel efficiency
+          fuelEfficiencyKmL: {
+            $cond: {
+              if: {
+                $and: [
+                  { $gt: ["$dailyDistanceKm", 1] }, // At least 1km traveled
+                  { $gt: ["$actualFuelConsumed", 0] }
+                ]
+              },
+              then: { $divide: ["$dailyDistanceKm", "$actualFuelConsumed"] },
+              else: 0
+            }
+          },
+          
+          fuelEfficiencyL100km: {
+            $cond: {
+              if: {
+                $and: [
+                  { $gt: ["$dailyDistanceKm", 1] },
+                  { $gt: ["$actualFuelConsumed", 0] }
+                ]
+              },
+              then: {
+                $multiply: [
+                  { $divide: ["$actualFuelConsumed", "$dailyDistanceKm"] },
+                  100
+                ]
+              },
+              else: 0
+            }
+          }
+        }
+      },
+  
       {
         $project: {
           _id: 0,
-          label: "$_id",
-          totalDistanceKm: 1,
-
-          // *** FIX: Convert all raw fuel values from mL to Liters by dividing by 1000 ***
-          totalFuelConsumedLiters: { $divide: ["$totalFuelConsumedRaw", 1000] },
-          totalFuelRefueledLiters: { $divide: ["$totalFuelRefueledRaw", 1000] },
-          startingFuel: { $divide: ["$startingFuelRaw", 1000] },
-          endingFuel: { $divide: ["$endingFuelRaw", 1000] },
-
-          // Mileage calculation now uses the CORRECTED fuel consumption in Liters
-          mileageKmL: {
+          date: "$_id.day",
+          
+          // Fuel levels
+          startingFuelPercent: { $round: ["$dayStartFuelPercent", 1] },
+          endingFuelPercent: { $round: ["$dayEndFuelPercent", 1] },
+          currentFuelLevel: { $round: ["$currentFuelLevel", 1] }, // Current fuel level
+          startingFuelLiters: { $round: ["$dayStartFuelLiters", 1] },
+          endingFuelLiters: { $round: ["$dayEndFuelLiters", 1] },
+          currentFuelLiters: { $round: ["$currentFuelLiters", 1] },
+          
+          // Consumption
+          totalFuelConsumedLiters: { $round: ["$actualFuelConsumed", 2] },
+          estimatedFuelUsed: { $round: ["$estimatedFuelUsed", 2] }, // For UI display
+          totalFuelRefueledLiters: { $round: ["$refuelAmount", 2] },
+          
+          // Distance and efficiency
+          totalDistanceKm: { $round: ["$dailyDistanceKm", 2] },
+          mileageKmL: { $round: ["$fuelEfficiencyKmL", 2] },
+          fuelEfficiencyL100km: { $round: ["$fuelEfficiencyL100km", 2] },
+          
+          // Status
+          currentIgnitionStatus: "$currentIgnitionStatus", // Current ignition status
+          ignitionStatusText: {
             $cond: {
-              if: { $gt: ["$totalFuelConsumedRaw", 0] }, // Check against raw value to avoid float issues
-              then: {
-                $divide: [
-                  "$totalDistanceKm",
-                  { $divide: ["$totalFuelConsumedRaw", 1000] }, // Use the converted value here
-                ],
-              },
-              else: 0,
-            },
+              if: { $eq: ["$currentIgnitionStatus", 1] },
+              then: "ON",
+              else: "OFF"
+            }
           },
-        },
+          refuelOccurred: { $gt: ["$refuelAmount", 0] },
+          lastUpdateTime: "$lastUpdateTime",
+          dataQuality: "$readingCount"
+        }
       },
-
-      // STAGE 7: Sort the final report by the label (date/week/month).
-      { $sort: { label: 1 } },
+  
+      { $sort: { date: 1 } }
     ];
-
+  
     const results = await Telemetry.aggregate(pipeline);
-
-    // Map the results to the final Map<string, FuelSummary> structure.
-    // The values from the pipeline are now already in the correct units.
+  
     const reportMap = new Map<string, FuelSummary>();
     results.forEach((point) => {
-      reportMap.set(point.label, {
-        totalFuelConsumedLiters: parseFloat(
-          point.totalFuelConsumedLiters?.toFixed(2) ?? 0
-        ),
-        totalFuelRefueledLiters: parseFloat(
-          point.totalFuelRefueledLiters?.toFixed(2) ?? 0
-        ),
-        startingFuel: parseFloat(point.startingFuel?.toFixed(2) ?? 0),
-        endingFuel: parseFloat(point.endingFuel?.toFixed(2) ?? 0),
-        totalDistanceKm: parseFloat(point.totalDistanceKm?.toFixed(2) ?? 0),
-        mileageKmL: parseFloat(point.mileageKmL?.toFixed(2) ?? 0),
+      reportMap.set(point.date, {
+        startingFuelPercent: point.startingFuelPercent || 0,
+        endingFuelPercent: point.endingFuelPercent || 0,
+        currentFuelLevel: point.currentFuelLevel || 0,
+        currentFuelLiters: point.currentFuelLiters || 0,
+        startingFuelLiters: point.startingFuelLiters || 0,
+        endingFuelLiters: point.endingFuelLiters || 0,
+        totalFuelConsumedLiters: point.totalFuelConsumedLiters || 0,
+        estimatedFuelUsed: point.estimatedFuelUsed || 0,
+        totalFuelRefueledLiters: point.totalFuelRefueledLiters || 0,
+        totalDistanceKm: point.totalDistanceKm || 0,
+        mileageKmL: point.mileageKmL || 0,
+        fuelEfficiencyL100km: point.fuelEfficiencyL100km || 0,
+        currentIgnitionStatus: point.currentIgnitionStatus || 0,
+        ignitionStatusText: point.ignitionStatusText || "OFF",
+        refuelOccurred: point.refuelOccurred || false,
+        lastUpdateTime: point.lastUpdateTime,
+        dataQuality: point.dataQuality
       });
     });
-
+  
     return reportMap;
   }
 

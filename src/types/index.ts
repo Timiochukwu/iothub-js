@@ -133,6 +133,15 @@ export interface TelemetryData {
   dtc?: number;
   externalVoltage?: number;
   totalMileage?: number;
+  engineStatus?: "ON" | "OFF";
+  // Enhanced battery information
+  batteryTemperature?: number;    // Temperature in Celsius
+  batteryHealthSoh?: number;     // State of Health percentage
+  batteryEstimatedLife?: number; // Estimated life in hours
+  batteryCurrent?: number;       // Current in Amperes
+  batteryVoltage?: number;       // Voltage in Volts
+  batteryVoltageMin?: number;    // Minimum voltage in range
+  batteryVoltageMax?: number;    // Maximum voltage in range
 }
 
 export interface TelemetryPayload {
@@ -214,6 +223,32 @@ export interface BatteryDTO {
   timestamp: number;
   message: string;
   formattedTimestamp: string;
+}
+
+export interface ComprehensiveBatteryDTO {
+  id: string;
+  timestamp: number;
+  formattedTimestamp: string;
+  message: string;
+  
+  // Basic battery info
+  battery?: number | null;           // Legacy battery field
+  externalVoltage?: number | null;   // External voltage
+  
+  // Enhanced battery information
+  temperature?: number | null;        // Temperature in Celsius
+  healthSoh?: number | null;         // State of Health percentage (0-100)
+  estimatedLife?: number | null;     // Estimated life in hours (e.g., 12.5)
+  current?: number | null;           // Current in Amperes (e.g., 4.2A)
+  voltage?: number | null;           // Voltage in Volts (e.g., 13.9V)
+  voltageMin?: number | null;        // Minimum voltage in range
+  voltageMax?: number | null;        // Maximum voltage in range
+  
+  // Calculated fields
+  batteryHealth: string;             // "Good", "Fair", "Poor", "Critical"
+  voltageRange: string;              // "Normal", "Low", "High"
+  temperatureStatus: string;         // "Normal", "Hot", "Cold"
+  estimatedLifeText: string;         // "12.5 hours", "Unknown"
 }
 
 export interface FuelLevelDTO {
