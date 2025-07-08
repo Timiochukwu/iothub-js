@@ -1,3 +1,165 @@
+export * from './AnalyticsDTO';
+export * from './TelemetryDTO';
+
+export type ChartGroupingType = "daily" | "weekly" | "monthly";
+
+export interface ReportOptions {
+  speedLimitKph: number;
+  rapidAccelKph: number;
+  rapidAccelSeconds: number;
+  rapidDecelKph: number;
+  rapidDecelSeconds: number;
+}
+
+export interface DrivingSummary {
+  totalDistanceKm: number;
+  totalDrivingTimeSeconds: number;
+  maxSpeedKph: number;
+  averageMovingSpeedKph: number;
+  averageRpm: number;
+  speedingCount: number;
+  speedingDistanceKm: number;
+  rapidAccelCount: number;
+  rapidDecelCount: number;
+}
+
+export interface EnhancedBatteryStatus {
+  overallVoltage: number;
+  normalRangeMin: number;
+  normalRangeMax: number;
+  temperature: number;
+  temperatureStatus: string;
+  soh: number;
+  sohStatus: string;
+  estimatedLife: number;
+  estimatedLifeUnit: string;
+  current: number;
+  currentStatus: string;
+  isCharging: boolean;
+  batteryHealth: string;
+  timestamp: number;
+}
+
+export interface BatterySummary {
+  // Basic voltage data
+  startingVoltage: number;
+  endingVoltage: number;
+  minVoltage: number;
+  maxVoltage: number;
+  averageVoltage: number;
+  
+  // Enhanced data for UI
+  overallVoltage: number;        // Current voltage
+  normalRangeMin: number;        // 12.4V
+  normalRangeMax: number;        // 13.6V
+  temperature: number;           // Operating temperature
+  temperatureStatus: string;     // "Operating Normally" / "High" / "Low"
+  soh: number;                   // State of Health percentage
+  sohStatus: string;             // "still performing well" / etc
+  estimatedLife: number;         // Hours until next charge
+  estimatedLifeUnit: string;     // "hrs"
+  current: number;               // Current in Amps
+  currentStatus: string;         // "charging currently" / "discharging" / "idle"
+  isCharging: boolean;           // true/false
+  batteryHealth: string;         // "Excellent" / "Good" / "Fair" / "Poor"
+}
+
+export interface FuelSummary {
+  startingFuelPercent: number;
+  endingFuelPercent: number;
+  currentFuelLevel: number;
+  currentFuelLiters: number;
+  startingFuelLiters: number;
+  endingFuelLiters: number;
+  totalFuelConsumedLiters: number;
+  estimatedFuelUsed: number;
+  totalFuelRefueledLiters: number;
+  totalDistanceKm: number;
+  mileageKmL: number;
+  fuelEfficiencyL100km: number;
+  currentIgnitionStatus: number;
+  ignitionStatusText: string;
+  refuelOccurred: boolean;
+  lastUpdateTime: number;
+  dataQuality: number;
+}
+
+export interface DailyFuelBarChartData {
+  date: string;
+  dayName: string;
+  dayOfWeek: number;
+  chartLabel: string;
+  totalFuelConsumedLiters: number;
+  totalFuelRefueledLiters: number;
+  hasData: boolean;
+}
+
+export interface DailyTirePressureData {
+  date: string;
+  dayName: string;
+  dayOfWeek: number;
+  chartLabel: string;
+  distanceCovered: number;
+  mainPressure: number;
+  startLocation: string;
+  endLocation: string;
+  hasData: boolean;
+}
+
+export interface EngineHealthData {
+  date: string;
+  ignitionStatus: string;
+  engineStatus: string;
+  avgRpm: number;
+  temperature: number;
+  oilLevel: string;
+  speed: number;
+  activeFaults: number;
+  dtcFaults: DTCFaultData[];
+  hasData: boolean;
+}
+
+export interface DTCFaultData {
+  faultId: string;
+  timestamp: string;
+  dtcCount: number;
+  suspectedCode: string;
+  description: string;
+  severity: string;
+  location: string;
+  symptoms: string[];
+  milDistance: number;
+  isActive: boolean;
+}
+
+export interface AnalyticsSummary {
+  totalDistanceKm: number;
+  totalDrivingTimeSeconds: number;
+  maxSpeedKph: number;
+  averageMovingSpeedKph: number;
+  averageRpm: number;
+  speedingCount: number;
+  speedingDistanceKm: number;
+  rapidAccelCount: number;
+  rapidDecelCount: number;
+}
+
+export interface SpeedChartPoint {
+  label: string;
+  maxSpeed: number;
+  averageSpeed: number;
+}
+
+export interface CombinedAnalyticsPoint {
+  label: string;
+  driving_data: DrivingSummary | null;
+  fuel_data: FuelSummary | null;
+  battery_data: BatterySummary | null;
+  fuel_chart_data: DailyFuelBarChartData | null;
+  tire_pressure_data: DailyTirePressureData | null;
+  engine_health_data: EngineHealthData | null;
+}
+
 export interface User {
   id?: string;
   email: string;

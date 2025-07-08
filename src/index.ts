@@ -22,6 +22,15 @@ import { collisionRoutes } from "./routes/collisionRoutes";
 import { notificationRouter } from "./routes/notificationRoutes";
 import workingHoursRouter from "./routes/workingHoursRouter";
 
+
+import coreTelemetryRoutes from "./routes/coreTelemetryRoutes";
+import combinedAnalyticsRoutes from "./routes/combinedAnalyticsRoutes";
+import fuelAnalyticsRoutes from "./routes/fuelAnalyticsRoutes";
+import engineHealthRoutes from "./routes/engineHealthRoutes";
+import tirePressureRoutes from "./routes/tirePressureRoutes";
+import drivingBehaviorRoutes from "./routes/drivingBehaviorRoutes";
+import batteryAnalyticsRoutes from "./routes/batteryAnalyticsRoutes";
+
 import path from "path";
 
 // Load environment variables
@@ -134,6 +143,13 @@ apiRouter.use("/geofences", geofenceRoutes);
 apiRouter.use("/collisions", collisionRoutes);
 apiRouter.use("/notifications", notificationRouter);
 apiRouter.use("/working-hours", workingHoursRouter);
+apiRouter.use("/telemetry", coreTelemetryRoutes);
+apiRouter.use("/analytics", combinedAnalyticsRoutes);
+apiRouter.use("/fuel", fuelAnalyticsRoutes);
+apiRouter.use("/engine", engineHealthRoutes);
+apiRouter.use("/tire-pressure", tirePressureRoutes);
+apiRouter.use("/driving", drivingBehaviorRoutes);
+apiRouter.use("/battery", batteryAnalyticsRoutes);
 
 // Mount the entire API logic on the '/api' path.
 app.use("/api", apiRouter);

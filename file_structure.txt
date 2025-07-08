@@ -8,24 +8,29 @@
 ├── package-lock.json
 ├── package.json
 ├── postman
-│   ├── Device_Registration.postman_collection.json
-│   ├── Geofence_Test.postman_collection.json
-│   ├── IoT_Hub_API.postman_collection.json
-│   ├── IoT_Hub_Environment.postman_environment.json
 │   ├── POSTMAN_TESTING_GUIDE.md
 │   ├── REALTIME_README.md
-│   └── TELEMETRY_README.md
+│   ├── TELEMETRY_README.md
+│   └── WorkingHours.postman_collection.json
 ├── src
 │   ├── config
 │   │   ├── database.ts
 │   │   └── swagger.ts
 │   ├── controllers
+│   │   ├── BatteryAnalyticsController.ts
+│   │   ├── CombinedAnalyticsController.ts
+│   │   ├── CoreTelemetryController.ts
 │   │   ├── DeviceController.ts
 │   │   ├── DeviceTypeController.ts
+│   │   ├── DrivingBehaviorController.ts
+│   │   ├── EngineHealthController.ts
+│   │   ├── FuelAnalyticsController.ts
 │   │   ├── GeofenceController.ts
 │   │   ├── RealTimeController.ts
 │   │   ├── TelemetryController.ts
+│   │   ├── TirePressureController.ts
 │   │   ├── UserController.ts
+│   │   ├── WorkingHoursController.ts
 │   │   ├── analyticsController.ts
 │   │   ├── collisionController.ts
 │   │   └── notificationController.ts
@@ -35,34 +40,51 @@
 │   │   ├── errorHandler.ts
 │   │   └── validation.ts
 │   ├── models
+│   │   ├── Collision.ts
 │   │   ├── Device.ts
 │   │   ├── DeviceType.ts
 │   │   ├── Geofence.ts
 │   │   ├── GeofenceEvent.ts
 │   │   ├── Telemetry.ts
-│   │   └── User.ts
+│   │   ├── User.ts
+│   │   └── WorkingHours.ts
 │   ├── public
 │   │   └── index.html
 │   ├── routes
 │   │   ├── analyticsRoutes.ts
 │   │   ├── authRoutes.ts
+│   │   ├── batteryAnalyticsRoutes.ts
 │   │   ├── collisionRoutes.ts
+│   │   ├── combinedAnalyticsRoutes.ts
+│   │   ├── coreTelemetryRoutes.ts
 │   │   ├── deviceRoutes.ts
+│   │   ├── drivingBehaviorRoutes.ts
+│   │   ├── engineHealthRoutes.ts
+│   │   ├── fuelAnalyticsRoutes.ts
 │   │   ├── geofenceRoutes.ts
 │   │   ├── notificationRoutes.ts
 │   │   ├── realtimeRoutes.ts
 │   │   ├── telemetryRoutes.ts
-│   │   └── userRoutes.ts
+│   │   ├── tirePressureRoutes.ts
+│   │   ├── userRoutes.ts
+│   │   └── workingHoursRouter.ts
 │   ├── services
+│   │   ├── BatteryAnalyticsService.ts
 │   │   ├── CollisionDetectionService.ts
+│   │   ├── CombinedAnalyticsService.ts
+│   │   ├── CoreTelemetryService.ts
 │   │   ├── DeviceService.ts
 │   │   ├── DeviceTypeService.ts
+│   │   ├── DrivingBehaviorService.ts
 │   │   ├── EmailService.ts
+│   │   ├── EngineHealthService.ts
+│   │   ├── FuelAnalyticsService.ts
 │   │   ├── GeofenceService.ts
 │   │   ├── NotificationService.ts
 │   │   ├── RealTimeService.ts
 │   │   ├── RealTimeServiceOld.js
 │   │   ├── TelemetryService.ts
+│   │   ├── TirePressureService.ts
 │   │   └── UserService.ts
 │   ├── test
 │   │   └── setup.ts
@@ -73,7 +95,9 @@
 │   │   └── index.ts
 │   └── utils
 │       ├── ValidationUtils.ts
+│       ├── alertUtils.ts
 │       ├── appEmitter.ts
+│       ├── avlIdMap.ts
 │       ├── jwt.ts
 │       ├── mapTelemetry.ts
 │       ├── responseHandler.ts
@@ -87,4 +111,4 @@
 ├── websocket docs.md
 └── yarn.lock
 
-14 directories, 74 files
+14 directories, 98 files
