@@ -6,6 +6,7 @@ const WorkingHoursSchema = new mongoose.Schema({
   // date: { type: Date, required: true },
   startTime: { type: String, required: true },
   endTime: { type: String, required: true },
+  triggered: { type: Boolean, default: false },
   startLocation: {
     lat: Number,
     lng: Number,
@@ -14,6 +15,8 @@ const WorkingHoursSchema = new mongoose.Schema({
     lat: Number,
     lng: Number,
   },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
   // overworked: { type: Boolean, default: false },
 });
 

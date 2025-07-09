@@ -64,11 +64,53 @@ export class WorkingHoursController {
 
   static async getAll(req: Request, res: Response) {
     try {
-      const records = await WorkingHours.find().sort({ date: -1 });
+      const records = await WorkingHours.find().sort({ createdAt: -1 });
       return res.status(200).json(records);
     } catch (error) {
       console.error(error);
       return res.status(500).json({ message: "Failed to fetch working hours" });
+    }
+  }
+
+  static async update(req: Request, res: Response) {
+    try {
+      const { deviceId } = req.params;
+      const records = await WorkingHours.find({ deviceId });
+      if (!records) {
+        return res.status(404).json({ message: "No working hours found" });
+      }
+
+      const { startTime, endTime, restingLocation } = req.body;
+      if (!startTime || !endTime || !restingLocation) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // check endTime is after startTime
+      const startTimestamp = new Date(startTime).getTime();
+      const endTimestamp = new Date(endTime).getTime();
+      if (endTimestamp <= startTimestamp) {
+        return res.status(400).json({
+          message: "End time must be after start time",
+        });
+      }
+
+      // update one
+      const updatedRecord = await WorkingHours.findOneAndUpdate(
+        { deviceId },
+        { startTime, endTime, endLocation: parseLatLng(restingLocation) },
+        { new: true }
+      );
+
+      if (!updatedRecord) {
+        return res.status(404).json({ message: "An unknown error occurred" });
+      }
+
+      return res.status(200).json({ message: "Working hours updated" });
+    } catch (error) {
+      console.error(error);
+      return res
+        .status(500)
+        .json({ message: "Failed to update working hours" });
     }
   }
 
@@ -87,53 +129,53 @@ export class WorkingHoursController {
   }
 
   // Create a working hour alert
-  static async createAlert(req: Request, res: Response) {
-    try {
-      // Use authenticated user from middleware
-      const userId = (req as any).user?.userId;
-      const { deviceId, startTime, endTime } = req.body;
-      if (!userId || !deviceId || !startTime || !endTime) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
-      // Find the device to get its IMEI
-      const device = await Device.findById(deviceId);
-      if (!device) {
-        return res.status(404).json({ message: "Device not found" });
-      }
-      // Fetch latest telemetry for the device
-      const latestTelemetry = await Telemetry.findOne({
-        imei: device.imei,
-      }).sort({ timestamp: -1 });
-      const location = latestTelemetry?.latlng
-        ? parseLatLng(latestTelemetry.latlng)
-        : null;
-      const alert = await WorkingHourAlert.create({
-        user: userId,
-        device: deviceId,
-        schedule: { startTime, endTime },
-        location: latestTelemetry?.latlng || null,
-      });
-      // Return minimal info in response
-      return res.status(201).json({
-        ...alert.toObject(),
-        user: {
-          _id: device.user,
-        },
-        device: {
-          _id: device._id,
-          imei: device.imei,
-          make: device.make,
-          modelYear: device.modelYear,
-          plateNumber: device.plateNumber,
-          deviceType: device.deviceType,
-        },
-        location,
-      });
-    } catch (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Failed to create alert" });
-    }
-  }
+  // static async createAlert(req: Request, res: Response) {
+  //   try {
+  //     // Use authenticated user from middleware
+  //     const userId = (req as any).user?.userId;
+  //     const { deviceId, startTime, endTime } = req.body;
+  //     if (!userId || !deviceId || !startTime || !endTime) {
+  //       return res.status(400).json({ message: "Missing required fields" });
+  //     }
+  //     // Find the device to get its IMEI
+  //     const device = await Device.findById(deviceId);
+  //     if (!device) {
+  //       return res.status(404).json({ message: "Device not found" });
+  //     }
+  //     // Fetch latest telemetry for the device
+  //     const latestTelemetry = await Telemetry.findOne({
+  //       imei: device.imei,
+  //     }).sort({ timestamp: -1 });
+  //     const location = latestTelemetry?.latlng
+  //       ? parseLatLng(latestTelemetry.latlng)
+  //       : null;
+  //     const alert = await WorkingHourAlert.create({
+  //       user: userId,
+  //       device: deviceId,
+  //       schedule: { startTime, endTime },
+  //       location: latestTelemetry?.latlng || null,
+  //     });
+  //     // Return minimal info in response
+  //     return res.status(201).json({
+  //       ...alert.toObject(),
+  //       user: {
+  //         _id: device.user,
+  //       },
+  //       device: {
+  //         _id: device._id,
+  //         imei: device.imei,
+  //         make: device.make,
+  //         modelYear: device.modelYear,
+  //         plateNumber: device.plateNumber,
+  //         deviceType: device.deviceType,
+  //       },
+  //       location,
+  //     });
+  //   } catch (error) {
+  //     console.error(error);
+  //     return res.status(500).json({ message: "Failed to create alert" });
+  //   }
+  // }
 
   // // List working hour alerts (optionally filter by user/device/status)
   // static async getAlerts(req: Request, res: Response) {

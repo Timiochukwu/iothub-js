@@ -6,6 +6,7 @@ import { TelemetryService } from "./TelemetryService";
 import { Telemetry, ITelemetry } from "../models/Telemetry";
 import { CollisionAlert } from "../models/Collision";
 import { Device } from "../models/Device";
+import { Notification } from "../models/Notification";
 import {
   DeviceConnection,
   TelemetryData,
@@ -1002,6 +1003,16 @@ export class RealTimeService {
     const startTime = workingHourData.startTime;
     const endTime = workingHourData.endTime;
 
+    const restingLocation = workingHourData.endLocation;
+    const restingLat = restingLocation?.lat;
+    const restingLng = restingLocation?.lng;
+
+    const latLng = payload.state.reported[AVL_ID_MAP["LAT_LNG"]];
+    const lat = latLng ? latLng.split(",")[0] : null;
+    const lng = latLng ? latLng.split(",")[1] : null;
+
+    let message = `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
+
     const formatStartTime = new Date(
       currentTime.toDateString() + " " + startTime
     );
@@ -1013,26 +1024,40 @@ export class RealTimeService {
       payload.state.reported.ts < formatStartTime.getTime()
     ) {
       if (payload.state.reported[AVL_ID_MAP["MOVEMENT"]] == 1) {
-        console.log(
-          `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`
-        );
+        // console.log(
+        //   `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`
+        // );
 
-        const latLng = payload.state.reported[AVL_ID_MAP["LAT_LNG"]];
-        const lat = latLng ? latLng.split(",")[0] : null;
-        const lng = latLng ? latLng.split(",")[1] : null;
+        if (restingLat !== lat && restingLng !== lng) {
+          message = `Device ${imei} is outside working hours and not at resting location. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
+        } else {
+          message = `Device ${imei} is outside working hours but at resting location. No alert triggered.`;
+          return;
+        }
 
-        await WorkingHourAlert.create({
-          device: deviceId,
-          imei,
-          timestamp: currentTime,
-          data: payload.state.reported,
-          location: {
-            lat: lat,
-            lng: lng,
-          },
-          status: "danger",
-          message: `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`,
-        });
+        workingHourData.triggered = true;
+        await workingHourData.save();
+
+        // await WorkingHourAlert.create({
+        //   device: deviceId,
+        //   imei,
+        //   timestamp: currentTime,
+        //   data: payload.state.reported,
+        //   location: {
+        //     lat: lat,
+        //     lng: lng,
+        //   },
+        //   status: "danger",
+        //   message,
+        // });
+
+        //store in notifications
+        const notification = {
+          user: device.user,
+          type: "working_hour_alert",
+          message,
+        };
+        await Notification.create(notification);
       }
     }
     // }

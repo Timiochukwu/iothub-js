@@ -9,6 +9,11 @@ const workingHoursRouter = Router();
 workingHoursRouter.post("/", authenticateToken, async (req, res) => {
   await WorkingHoursController.create(req, res);
 });
+
+workingHoursRouter.put("/:deviceId", authenticateToken, async (req, res) => {
+  await WorkingHoursController.update(req, res);
+});
+
 workingHoursRouter.get("/", authenticateToken, async (req, res) => {
   await WorkingHoursController.getAll(req, res);
 });
