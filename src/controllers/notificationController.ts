@@ -35,10 +35,12 @@ export const getNotification = async (req: Request, res: Response) => {
       return;
     }
 
-    const notification = await notificationService.getNotificationById(
-      userId,
-      id
-    );
+    const notification = await Notification.findOne({
+      _id: id,
+      user: userId,
+    })
+      .select("message type read timestamp")
+      .exec();
 
     if (!notification) {
       res
@@ -49,13 +51,7 @@ export const getNotification = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: {
-        ...notification,
-        date: new Date(notification.timestamp).toLocaleDateString(),
-        time: new Date(notification.timestamp).toLocaleTimeString(),
-        icon: getNotificationIcon(notification.type),
-        color: getSeverityColor(notification.severity),
-      },
+      data: notification,
     });
   } catch (error) {
     res.status(500).json({
@@ -172,6 +168,49 @@ export const getNotificationStats = async (req: Request, res: Response) => {
         error instanceof Error
           ? error.message
           : "Failed to fetch notification stats",
+    });
+  }
+};
+
+export const getNotificationByType = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { type } = req.params;
+
+    if (!type) {
+      res.status(400).json({
+        success: false,
+        message: "Notification type is required",
+      });
+      return;
+    }
+
+    const notifications = await Notification.find({
+      user: userId,
+      type,
+    })
+      .sort({ timestamp: -1 })
+      .exec();
+
+    if (notifications.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "No notifications found for this type",
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: notifications,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch notifications",
     });
   }
 };
