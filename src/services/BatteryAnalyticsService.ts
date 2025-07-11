@@ -100,7 +100,7 @@ export class BatteryAnalyticsService {
         normalRangeMax: 13.6,
         temperature: temperature,
         temperatureStatus: this.getTemperatureStatus(temperature),
-        soh: this.calculateStateOfHealth(voltage, point.minVoltage, point.maxVoltage),
+        soh: this.calculateStateOfHealth(voltage),
         sohStatus: this.getSohStatus(voltage),
         estimatedLife: this.calculateEstimatedLife(voltage, current),
         estimatedLifeUnit: "hrs",
@@ -170,7 +170,7 @@ export class BatteryAnalyticsService {
     return "Operating Normally";
   }
 
-  private calculateStateOfHealth(voltage: number, minVoltage?: number, maxVoltage?: number): number {
+  private calculateStateOfHealth(voltage: number): number {
     // SOH calculation based on voltage
     if (voltage >= 13.5) return 95;
     if (voltage >= 13.0) return 85;

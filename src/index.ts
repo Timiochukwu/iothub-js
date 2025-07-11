@@ -32,6 +32,9 @@ import drivingBehaviorRoutes from "./routes/drivingBehaviorRoutes";
 import batteryAnalyticsRoutes from "./routes/batteryAnalyticsRoutes";
 import speedAlertRoutes from "./routes/speedAlertRoutes";
 
+import serviceAlertsRoutes from "./routes/serviceAlertsRoutes";
+
+
 import path from "path";
 
 // Load environment variables
@@ -152,6 +155,7 @@ apiRouter.use("/tire-pressure", tirePressureRoutes);
 apiRouter.use("/driving", drivingBehaviorRoutes);
 apiRouter.use("/battery", batteryAnalyticsRoutes);
 apiRouter.use("/speed", speedAlertRoutes);
+apiRouter.use("/service-alerts", serviceAlertsRoutes);
 
 
 // Mount the entire API logic on the '/api' path.

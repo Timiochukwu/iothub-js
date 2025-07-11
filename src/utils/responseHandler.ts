@@ -1,10 +1,30 @@
 // src/utils/responseHandler.ts
 import { Request, Response } from "express";
 import { CustomError } from "../middleware/errorHandler";
-import { ApiResponse } from "../types";
 // import geofence
 import { CreateGeofenceRequest } from "../types/index";
 import { GeofenceService } from "../services/GeofenceService";
+
+export const handleSuccess = <T>(
+  res: Response,
+  data: T,
+  message = "Success",
+  statusCode = 200
+): void => {
+  ResponseHandler.success(res, data, message, statusCode);
+};
+
+export const handleError = (
+  res: Response,
+  message: string,
+  statusCode: number = 500
+): void => {
+  // Create a custom error with the status code
+  const error = new Error(message) as any;
+  error.statusCode = statusCode;
+  
+  ResponseHandler.error(res, error, message);
+};
 
 export class ResponseHandler {
   // --- FIX #2: THE `success` METHOD WAS MISSING THE `data` PARAMETER ---
@@ -167,4 +187,6 @@ export class ImprovedGeofenceController {
       ResponseHandler.error(res, error);
     }
   };
+
+  
 }
