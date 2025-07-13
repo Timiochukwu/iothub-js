@@ -3,14 +3,12 @@ import { AVL_ID_MAP } from "../utils/avlIdMap";
 import { EngineHealthData, DTCFaultData, ChartGroupingType } from "../types/";
 
 export class EngineHealthService {
-
   async getEngineHealthData(
     imei: string,
     startDate: Date,
     endDate: Date,
     type: ChartGroupingType
   ): Promise<Map<string, EngineHealthData>> {
-    
     const tsKey = `state.reported.ts`;
     const ignitionKey = `state.reported.${AVL_ID_MAP.IGNITION}`;
     const rpmKey = `state.reported.${AVL_ID_MAP.ENGINE_RPM}`;
@@ -27,17 +25,21 @@ export class EngineHealthService {
         [speedKey]: 1,
         [tempKey]: 1,
         [dtcKey]: 1,
-        [ignitionKey]: 1
+        [ignitionKey]: 1,
       });
-    
+
     let currentIgnitionStatus = "OFF";
     if (latestTelemetry) {
       const reported = latestTelemetry.state?.reported;
       const currentRpm = reported?.[AVL_ID_MAP.ENGINE_RPM];
       const currentSpeed = reported?.[AVL_ID_MAP.SPEED];
       const currentIgnition = reported?.[AVL_ID_MAP.IGNITION];
-      
-      if (currentIgnition === 1 || (currentRpm && currentRpm > 0) || (currentSpeed && currentSpeed > 0)) {
+
+      if (
+        currentIgnition === 1 ||
+        (currentRpm && currentRpm > 0) ||
+        (currentSpeed && currentSpeed > 0)
+      ) {
         currentIgnitionStatus = "ON";
       }
     }
@@ -50,10 +52,10 @@ export class EngineHealthService {
           [rpmKey]: { $exists: true },
           [tempKey]: { $exists: true },
           [speedKey]: { $exists: true },
-          [dtcKey]: { $exists: true }
-        }
+          [dtcKey]: { $exists: true },
+        },
       },
-      
+
       {
         $group: {
           _id: null,
@@ -61,10 +63,10 @@ export class EngineHealthService {
           currentTemp: { $first: `$${tempKey}` },
           activeFaults: { $first: `$${dtcKey}` },
           avgRpm: { $avg: `$${rpmKey}` },
-          readingCount: { $sum: 1 }
-        }
+          readingCount: { $sum: 1 },
+        },
       },
-      
+
       {
         $project: {
           _id: 0,
@@ -76,19 +78,19 @@ export class EngineHealthService {
             $cond: {
               if: { $gt: ["$activeFaults", 0] },
               then: "CHECK_REQUIRED",
-              else: "NORMAL"
-            }
+              else: "NORMAL",
+            },
           },
-          hasData: { $gt: ["$readingCount", 0] }
-        }
-      }
+          hasData: { $gt: ["$readingCount", 0] },
+        },
+      },
     ];
 
     const results = await Telemetry.aggregate(pipeline);
-    
+
     const reportMap = new Map<string, EngineHealthData>();
-    const today = new Date().toISOString().split('T')[0]!;
-    
+    const today = new Date().toISOString().split("T")[0]!;
+
     if (results.length > 0) {
       const data = results[0];
       reportMap.set(today, {
@@ -101,7 +103,7 @@ export class EngineHealthService {
         speed: data.speed,
         activeFaults: data.activeFaults,
         dtcFaults: [],
-        hasData: data.hasData
+        hasData: data.hasData,
       });
     }
 
@@ -113,7 +115,6 @@ export class EngineHealthService {
     startDate: Date,
     endDate: Date
   ): Promise<DTCFaultData[]> {
-    
     const tsKey = `state.reported.ts`;
     const dtcCountKey = `state.reported.${AVL_ID_MAP.DTC_COUNT}`;
     const milKey = `state.reported.${AVL_ID_MAP.DISTANCE_TRAVELED_MIL_ON}`;
@@ -128,11 +129,11 @@ export class EngineHealthService {
           imei,
           [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
           [dtcCountKey]: { $gt: 0 },
-        }
+        },
       },
-      
+
       { $sort: { [tsKey]: -1 } },
-      
+
       {
         $project: {
           _id: 0,
@@ -143,32 +144,32 @@ export class EngineHealthService {
           coolantTemp: `$${coolantTempKey}`,
           fuelTrim: `$${fuelTrimKey}`,
           location: `$${locationKey}`,
-          
+
           suspectedFault: {
             $switch: {
               branches: [
                 {
                   case: { $gt: [`$${coolantTempKey}`, 105] },
-                  then: "COOLING_SYSTEM"
+                  then: "COOLING_SYSTEM",
                 },
                 {
                   case: { $gt: [{ $abs: `$${fuelTrimKey}` }, 15] },
-                  then: "FUEL_SYSTEM"
+                  then: "FUEL_SYSTEM",
                 },
                 {
                   case: { $gt: [`$${engineLoadKey}`, 85] },
-                  then: "ENGINE_PERFORMANCE"
-                }
+                  then: "ENGINE_PERFORMANCE",
+                },
               ],
-              default: "UNKNOWN"
-            }
-          }
-        }
-      }
+              default: "UNKNOWN",
+            },
+          },
+        },
+      },
     ];
 
     const results = await Telemetry.aggregate(pipeline);
-    
+
     return results.map((fault, index) => ({
       faultId: `DTC_${Date.now()}_${index}`,
       timestamp: new Date(fault.timestamp).toISOString(),
@@ -179,43 +180,70 @@ export class EngineHealthService {
       location: fault.location,
       symptoms: this.analyzeSymptoms(fault),
       milDistance: fault.milDistance,
-      isActive: true
+      isActive: true,
     }));
   }
 
   private generateSuspectedCode(faultType: string): string {
     const codes: { [key: string]: string } = {
-      'COOLING_SYSTEM': 'P0217',
-      'FUEL_SYSTEM': 'P0171',
-      'ENGINE_PERFORMANCE': 'P0300',
-      'UNKNOWN': 'P0000'
+      COOLING_SYSTEM: "P0217",
+      FUEL_SYSTEM: "P0171",
+      ENGINE_PERFORMANCE: "P0300",
+      UNKNOWN: "P0000",
     };
-    return codes[faultType] || 'P0000';
+    return codes[faultType] || "P0000";
   }
 
   private getFaultDescription(faultType: string): string {
     const descriptions: { [key: string]: string } = {
-      'COOLING_SYSTEM': 'Engine Overheating Condition',
-      'FUEL_SYSTEM': 'Fuel System Too Lean',
-      'ENGINE_PERFORMANCE': 'Engine Performance Issue',
-      'UNKNOWN': 'Unknown Engine Fault'
+      COOLING_SYSTEM: "Engine Overheating Condition",
+      FUEL_SYSTEM: "Fuel System Too Lean",
+      ENGINE_PERFORMANCE: "Engine Performance Issue",
+      UNKNOWN: "Unknown Engine Fault",
     };
-    return descriptions[faultType] || 'Unknown Engine Fault';
+    return descriptions[faultType] || "Unknown Engine Fault";
   }
 
   private getSeverityLevel(fault: any): string {
-    if (fault.coolantTemp > 110) return 'CRITICAL';
-    if (fault.dtcCount > 3) return 'HIGH';
-    if (fault.milDistance > 0) return 'MEDIUM';
-    return 'LOW';
+    if (fault.coolantTemp > 110) return "CRITICAL";
+    if (fault.dtcCount > 3) return "HIGH";
+    if (fault.milDistance > 0) return "MEDIUM";
+    return "LOW";
   }
 
   private analyzeSymptoms(fault: any): string[] {
     const symptoms = [];
-    if (fault.coolantTemp > 105) symptoms.push('High coolant temperature');
-    if (Math.abs(fault.fuelTrim) > 15) symptoms.push('Fuel trim out of range');
-    if (fault.engineLoad > 85) symptoms.push('High engine load');
-    if (fault.milDistance > 0) symptoms.push('MIL lamp activated');
+    if (fault.coolantTemp > 105) symptoms.push("High coolant temperature");
+    if (Math.abs(fault.fuelTrim) > 15) symptoms.push("Fuel trim out of range");
+    if (fault.engineLoad > 85) symptoms.push("High engine load");
+    if (fault.milDistance > 0) symptoms.push("MIL lamp activated");
     return symptoms;
+  }
+
+  async getCurrentEngineStatus(imei: string): Promise<any> {
+    const telemetry = await Telemetry.findOne({ imei }).sort({
+      "state.reported.ts": -1,
+    });
+    if (!telemetry) {
+      throw new Error("No telemetry data found for the given IMEI");
+    }
+    const reported = telemetry.state?.reported;
+    // Calculate oilLevel based on reported faults
+    let oilLevelStatus = "NORMAL";
+    const activeFaults = reported?.[AVL_ID_MAP.DTC_COUNT] || 0;
+
+    if (activeFaults > 0) {
+      oilLevelStatus = "CHECK_REQUIRED";
+    }
+
+    return {
+      coolantTemp: reported?.[AVL_ID_MAP.COOLANT_TEMPERATURE] || 0,
+      fuelTrim: reported?.[AVL_ID_MAP.SHORT_FUEL_TRIM] || 0,
+      engineLoad: reported?.[AVL_ID_MAP.ENGINE_LOAD] || 0,
+      rpm: reported?.[AVL_ID_MAP.ENGINE_RPM] || 0,
+      speed: reported?.[AVL_ID_MAP.SPEED] || 0,
+      ignitionStatus: reported?.[AVL_ID_MAP.IGNITION] ? "ON" : "OFF",
+      oilLevel: oilLevelStatus,
+    };
   }
 }
