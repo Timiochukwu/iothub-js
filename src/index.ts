@@ -15,6 +15,7 @@ import realtimeRoutes, {
   initializeRealTimeRoutes,
 } from "./routes/realtimeRoutes";
 import { RealTimeService } from "./services/RealTimeService";
+import { GeofenceService } from './services/GeofenceService';
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger";
 import geofenceRoutes from "./routes/geofenceRoutes";
@@ -32,6 +33,7 @@ import drivingBehaviorRoutes from "./routes/drivingBehaviorRoutes";
 import batteryAnalyticsRoutes from "./routes/batteryAnalyticsRoutes";
 import speedAlertRoutes from "./routes/speedAlertRoutes";
 
+
 import serviceAlertsRoutes from "./routes/serviceAlertsRoutes";
 
 
@@ -45,7 +47,10 @@ const httpServer = createServer(app);
 
 // Initialize real-time service
 const realTimeService = new RealTimeService(httpServer);
+const geofenceService = new GeofenceService(realTimeService);
 
+
+(realTimeService as any).setGeofenceService?.(geofenceService);
 // Initialize real-time routes with service instance
 initializeRealTimeRoutes(realTimeService);
 

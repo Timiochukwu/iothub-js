@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authenticated Geofence Socket.IO Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        button { margin: 5px; padding: 8px 15px; }
+        input { margin: 5px; padding: 5px; width: 200px; }
+        #messages { height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Authenticated Geofence Real-time Test</h1>
+    
+    <div id="status" class="status disconnected">Disconnected</div>
+    
+    <!-- Authentication Section -->
+    <div>
+        <h3>Authentication</h3>
+        <input type="text" id="jwtToken" placeholder="JWT Token" style="width: 400px;">
+        <button onclick="connectWithAuth()">Connect with Token</button>
+    </div>
+    
+    <!-- Device Section -->
+    <div>
+        <h3>Device Operations</h3>
+        <input type="text" id="deviceImei" placeholder="Device IMEI" value="123456789012345">
+        <input type="text" id="userEmail" placeholder="User Email" value="test@example.com">
+        <button onclick="joinGeofenceRoom()">Join Geofence Room</button>
+        <button onclick="leaveGeofenceRoom()">Leave Geofence Room</button>
+    </div>
+    
+    <!-- Test Events -->
+    <div>
+        <h3>Test Events</h3>
+        <button onclick="simulateEntry()">Simulate Geofence Entry</button>
+        <button onclick="simulateExit()">Simulate Geofence Exit</button>
+    </div>
+    
+    <div id="messages"></div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        let socket = null;
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+
+        function log(message) {
+            const time = new Date().toLocaleTimeString();
+            messagesDiv.innerHTML += `<div>[${time}] ${message}</div>`;
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function connectWithAuth() {
+            const token = document.getElementById('jwtToken').value;
+            
+            if (!token) {
+                log('❌ Please enter a JWT token');
+                return;
+            }
+
+            // Disconnect existing connection
+            if (socket) {
+                socket.disconnect();
+            }
+
+            // Connect with authentication
+            socket = io('http://localhost:6162', {
+                auth: {
+                    token: token
+                }
+            });
+
+            socket.on('connect', () => {
+                statusDiv.textContent = '✅ Connected and Authenticated';
+                statusDiv.className = 'status connected';
+                log(`Connected with socket ID: ${socket.id}`);
+            });
+
+            socket.on('disconnect', () => {
+                statusDiv.textContent = '❌ Disconnected from server';
+                statusDiv.className = 'status disconnected';
+                log('Disconnected from server');
+            });
+
+            socket.on('authenticated', (data) => {
+                log(`✅ Authentication successful: ${data.message}`);
+            });
+
+            socket.on('geofence-event', (data) => {
+                log(`🎯 GEOFENCE EVENT: Device ${data.deviceImei} ${data.type} ${data.geofenceName}`);
+                log(`   Coordinates: ${data.coordinates.lat}, ${data.coordinates.lng}`);
+            });
+
+            socket.on('geofence_room_joined', (data) => {
+                log(`🏠 ${data.message}`);
+            });
+
+            socket.on('geofence_room_left', (data) => {
+                log(`🚪 ${data.message}`);
+            });
+
+            socket.on('test_geofence_event_sent', (data) => {
+                log(`✅ ${data.message}`);
+            });
+
+            socket.on('error', (error) => {
+                log(`❌ Error: ${error.message || error.details || JSON.stringify(error)}`);
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`❌ Connection Error: ${error.message}`);
+                statusDiv.textContent = '❌ Connection Failed';
+                statusDiv.className = 'status disconnected';
+            });
+        }
+
+        function joinGeofenceRoom() {
+            if (!socket || !socket.connected) {
+                log('❌ Not connected to server');
+                return;
+            }
+
+            const deviceImei = document.getElementById('deviceImei').value;
+            const userEmail = document.getElementById('userEmail').value;
+
+            socket.emit('join-geofence-room', { 
+                deviceImei: deviceImei,
+                userEmail: userEmail 
+            });
+            log(`📱 Requesting to join geofence room for device: ${deviceImei}`);
+        }
+
+        function leaveGeofenceRoom() {
+            if (!socket || !socket.connected) {
+                log('❌ Not connected to server');
+                return;
+            }
+
+            const deviceImei = document.getElementById('deviceImei').value;
+            const userEmail = document.getElementById('userEmail').value;
+
+            socket.emit('leave-geofence-room', { 
+                deviceImei: deviceImei,
+                userEmail: userEmail 
+            });
+            log(`🚪 Leaving geofence room for device: ${deviceImei}`);
+        }
+
+        function simulateEntry() {
+            if (!socket || !socket.connected) {
+                log('❌ Not connected to server');
+                return;
+            }
+
+            const deviceImei = document.getElementById('deviceImei').value;
+            
+            socket.emit('test-geofence-event', {
+                type: 'entry',
+                deviceImei: deviceImei,
+                geofenceId: 'test-geofence-123',
+                geofenceName: 'Test Home Zone',
+                timestamp: Date.now(),
+                coordinates: { lat: 40.7128, lng: -74.0060 }
+            });
+            log('🧪 Sent test entry event');
+        }
+
+        function simulateExit() {
+            if (!socket || !socket.connected) {
+                log('❌ Not connected to server');
+                return;
+            }
+
+            const deviceImei = document.getElementById('deviceImei').value;
+            
+            socket.emit('test-geofence-event', {
+                type: 'exit',
+                deviceImei: deviceImei,
+                geofenceId: 'test-geofence-123',
+                geofenceName: 'Test Home Zone',
+                timestamp: Date.now(),
+                coordinates: { lat: 40.7200, lng: -74.0100 }
+            });
+            log('🧪 Sent test exit event');
+        }
+
+        // Auto-populate with a sample token for testing
+        window.onload = function() {
+            log('💡 To test: Get a JWT token from your auth endpoint and paste it above');
+        };
+    </script>
+</body>
+</html>

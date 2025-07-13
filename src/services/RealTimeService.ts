@@ -4,7 +4,6 @@ import * as jwt from "jsonwebtoken";
 // import { CollisionAlert } from "./CollisionDetectionService";
 import { TelemetryService } from "./TelemetryService";
 import { Telemetry, ITelemetry } from "../models/Telemetry";
-import { CollisionAlert } from "../models/Collision";
 import { Device } from "../models/Device";
 import { Notification } from "../models/Notification";
 import {
@@ -20,7 +19,10 @@ import { JwtUtils } from "../utils/jwt";
 import { mapTelemetry } from "../utils/mapTelemetry";
 import { TelemetryDTO } from "../types/TelemetryDTO";
 import { NotificationService } from "./NotificationService";
-import { WorkingHours, WorkingHourAlert } from "../models/WorkingHours";
+import { WorkingHours } from "../models/WorkingHours";
+
+import { GeofenceService } from "./GeofenceService";
+
 
 const COLLISION_DECELERATION_THRESHOLD_KPH_S = 30;
 
@@ -30,6 +32,21 @@ interface HistoryPayload {
   imei: string;
   startDate: string;
   endDate: string;
+}
+
+interface GeofenceEvent {
+  type: 'entry' | 'exit';
+  deviceImei: string;
+  geofenceId: string;
+  geofenceName: string;
+  timestamp: number;
+  coordinates: { lat: number; lng: number };
+  userEmail?: string;
+}
+
+interface GeofenceRoomData {
+  deviceImei: string;
+  userEmail?: string;
 }
 
 // Add this interface to your existing interfaces
@@ -69,17 +86,26 @@ export class RealTimeService {
   private userSockets: Map<string, Set<string>> = new Map(); // Key: user email, Value: Set of socketIds
   private notificationService: NotificationService;
 
+  private geofenceService?: GeofenceService;  
+
   constructor(httpServer: HTTPServer) {
     this.io = new SocketIOServer<any, any, any, SocketData>(httpServer, {
-      // 🟢 NEW: Apply SocketData type
       cors: {
-        origin: [
-          process.env.FRONTEND_URL || "http://localhost:3000",
-          "http://localhost:6162",
-          "http://localhost:5177",
-        ],
-        methods: ["GET", "POST"],
+        origin: "*", // ✅ Allow all origins for development
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        credentials: true,
+        allowedHeaders: ["*"],
+        exposedHeaders: ["*"]
       },
+      transports: ['websocket', 'polling'],
+      allowEIO3: true,
+      pingTimeout: 60000,
+      pingInterval: 25000,
+      upgradeTimeout: 30000,
+      allowRequest: (req, fn) => {
+        // Allow all requests for development
+        fn(null, true);
+      }
     });
 
     this.telemetryService = new TelemetryService();
@@ -87,6 +113,11 @@ export class RealTimeService {
     this.setupSocketHandlers();
     this.setupChangeStreamListener();
     console.log("✅ RealTimeService initialized with Socket.IO server.");
+  }
+
+  public setGeofenceService(geofenceService: GeofenceService): void {
+    this.geofenceService = geofenceService;
+    console.log('✅ GeofenceService connected to RealTimeService');
   }
 
   private setupSocketHandlers(): void {
@@ -120,6 +151,25 @@ export class RealTimeService {
       socket.on("telemetry_data", (payload: TelemetryPayload) =>
         this.handleTelemetryData(socket, payload)
       );
+
+      // 🟢 NEW: Geofence Event Listeners
+    socket.on("join-geofence-room", (data: GeofenceRoomData) =>
+      this.handleJoinGeofenceRoom(socket, data)
+    );
+    socket.on("leave-geofence-room", (data: GeofenceRoomData) =>
+      this.handleLeaveGeofenceRoom(socket, data)
+    );
+    socket.on("test-geofence-event", (data: GeofenceEvent) =>
+      this.handleTestGeofenceEvent(socket, data)
+    );
+
+    // Legacy support for the old event names
+    socket.on("join-device-room", (data: { deviceImei: string }) =>
+      this.handleJoinGeofenceRoom(socket, data)
+    );
+    socket.on("leave-device-room", (data: { deviceImei: string }) =>
+      this.handleLeaveGeofenceRoom(socket, data)
+    );
       socket.on("disconnect", (reason) =>
         this.handleDisconnection(socket, reason)
       );
@@ -509,214 +559,6 @@ export class RealTimeService {
       );
     }
   }
-
-  // // 🟢 NEW: Handle collision alerts
-  // private async handleCollisionAlert(
-  //   imei: string,
-  //   alert: CollisionAlert
-  // ): Promise<void> {
-  //   try {
-  //     console.log(
-  //       `[Collision Alert] 🚨 ${alert.severity.toUpperCase()} collision detected for device ${imei}`
-  //     );
-
-  //     // Find device owner
-  //     const device = await Device.findOne({ imei });
-  //     if (!device || !device.user) {
-  //       console.error(
-  //         `[Collision Alert] ❌ Device ${imei} not found or has no owner`
-  //       );
-  //       return;
-  //     }
-
-  //     // Create collision event for notification
-  //     const collisionEvent = {
-  //       id: alert.id,
-  //       imei: alert.imei,
-  //       timestamp: alert.timestamp,
-  //       severity: alert.severity,
-  //       location: {
-  //         latlng: alert.location,
-  //         address: alert.location,
-  //       },
-  //       vehicleInfo: {
-  //         speed: 0, // You'll need to extract this from your telemetry
-  //         rpm: 0,
-  //         direction: 0,
-  //       },
-  //       accelerometerData: {
-  //         x: 0,
-  //         y: 0,
-  //         z: 0, // You'll need to extract this from your telemetry
-  //       },
-  //       status: "pending" as const,
-  //       emergencyContacted: alert.severity === "severe",
-  //     };
-
-  //     // Create notification
-  //     const notification =
-  //       await this.notificationService.createCollisionNotification(
-  //         collisionEvent,
-  //         device.user.toString()
-  //       );
-
-  //     const collisionEventData = {
-  //       type: "collision_alert",
-  //       imei,
-  //       timestamp: alert.timestamp,
-  //       alert,
-  //     };
-
-  //     // Send real-time collision alert to watchers
-  //     const watchRoom = `watch:${imei}`;
-  //     this.io.to(watchRoom).emit("collision_alert", collisionEventData);
-
-  //     // Send notification to user's devices
-  //     const userRoom = `user:${device.user}`;
-  //     this.io.to(userRoom).emit("notification", {
-  //       type: "new_notification",
-  //       notification: {
-  //         ...notification,
-  //         date: new Date(notification.timestamp).toLocaleDateString(),
-  //         time: new Date(notification.timestamp).toLocaleTimeString(),
-  //         icon: "🚗",
-  //         color: notification.severity === "critical" ? "#EF4444" : "#F59E0B",
-  //       },
-  //     });
-
-  //     // For severe collisions, broadcast to emergency channels
-  //     if (alert.severity === "severe") {
-  //       this.io.emit("emergency_collision", {
-  //         ...collisionEventData,
-  //         priority: "HIGH",
-  //         emergencyResponse: true,
-  //       });
-  //     }
-
-  //     console.log(
-  //       `[Collision Alert] 📡 Collision alert and notification sent for ${imei} - Severity: ${alert.severity}`
-  //     );
-  //   } catch (error) {
-  //     console.error(
-  //       `[Collision Alert] ❌ Error handling collision alert for ${imei}:`,
-  //       error
-  //     );
-  //   }
-  // }
-
-  // // 🟢 NEW: Event handler for collision status updates
-  // private async handleCollisionStatusUpdate(
-  //   socket: Socket<any, any, any, SocketData>,
-  //   data: {
-  //     imei: string;
-  //     collisionId: string;
-  //     status: "confirmed" | "false_alarm";
-  //     responseTime?: number;
-  //   }
-  // ): Promise<void> {
-  //   try {
-  //     const { imei, collisionId, status, responseTime } = data;
-  //     const user = socket.data.user;
-
-  //     // Authentication check
-  //     if (!user) {
-  //       throw new CustomError("Authentication required.", 401);
-  //     }
-
-  //     // Authorization check
-  //     const device = await Device.findOne({ imei, user: user.userId });
-  //     if (!device) {
-  //       throw new CustomError(`Access denied to device ${imei}.`, 403);
-  //     }
-
-  //     // Update collision status
-  //     await this.telemetryService.updateCollisionStatus(
-  //       imei,
-  //       collisionId,
-  //       status,
-  //       responseTime
-  //     );
-
-  //     // Notify all watchers about the status update
-  //     const watchRoom = `watch:${imei}`;
-  //     this.io.to(watchRoom).emit("collision_status_updated", {
-  //       imei,
-  //       collisionId,
-  //       status,
-  //       updatedBy: user.email,
-  //       timestamp: Date.now(),
-  //     });
-
-  //     socket.emit("collision_status_update_success", {
-  //       message: `Collision status updated to ${status}`,
-  //       collisionId,
-  //       status,
-  //     });
-
-  //     console.log(
-  //       `[Collision Status] ✅ User ${user.email} updated collision ${collisionId} status to ${status}`
-  //     );
-  //   } catch (error) {
-  //     const errorMessage =
-  //       error instanceof Error
-  //         ? error.message
-  //         : "Failed to update collision status";
-  //     const errorCode = error instanceof CustomError ? error.statusCode : 500;
-
-  //     console.error(`[Collision Status] ❌ Error: ${errorMessage}`);
-  //     socket.emit("error", {
-  //       message: "Failed to update collision status",
-  //       details: errorMessage,
-  //       code: errorCode,
-  //     });
-  //   }
-  // }
-
-  // // 🟢 NEW: Get collision history for a device
-  // private async handleGetCollisionHistory(
-  //   socket: Socket<any, any, any, SocketData>,
-  //   data: { imei: string; limit?: number }
-  // ): Promise<void> {
-  //   try {
-  //     const { imei, limit = 10 } = data;
-  //     const user = socket.data.user;
-
-  //     // Authentication check
-  //     if (!user) {
-  //       throw new CustomError("Authentication required.", 401);
-  //     }
-
-  //     // Authorization check
-  //     const device = await Device.findOne({ imei, user: user.userId });
-  //     if (!device) {
-  //       throw new CustomError(`Access denied to device ${imei}.`, 403);
-  //     }
-
-  //     const collisionHistory = await this.telemetryService.getCollisionHistory(
-  //       imei,
-  //       limit
-  //     );
-
-  //     socket.emit("collision_history", {
-  //       imei,
-  //       collisions: collisionHistory,
-  //       timestamp: Date.now(),
-  //     });
-  //   } catch (error) {
-  //     const errorMessage =
-  //       error instanceof Error
-  //         ? error.message
-  //         : "Failed to get collision history";
-  //     const errorCode = error instanceof CustomError ? error.statusCode : 500;
-
-  //     console.error(`[Collision History] ❌ Error: ${errorMessage}`);
-  //     socket.emit("error", {
-  //       message: "Failed to get collision history",
-  //       details: errorMessage,
-  //       code: errorCode,
-  //     });
-  //   }
-  // }
 
   private async handleGetFuelLevelHistory(
     socket: Socket<any, any, any, SocketData>,
@@ -1196,4 +1038,165 @@ export class RealTimeService {
 
     return false;
   }
+
+  /**
+ * Handle geofence room joining
+ */
+private async handleJoinGeofenceRoom(
+  socket: Socket<any, any, any, SocketData>,
+  data: GeofenceRoomData
+): Promise<void> {
+  try {
+    const { deviceImei, userEmail } = data;
+    const user = socket.data.user;
+
+    // Authentication check
+    if (!user) {
+      throw new CustomError("Authentication required.", 401);
+    }
+
+    if (!deviceImei) {
+      throw new CustomError("Device IMEI is required.", 400);
+    }
+
+    // Authorization check - verify user owns this device
+    const device = await Device.findOne({ imei: deviceImei, user: user.userId });
+    if (!device) {
+      throw new CustomError(`Access denied to device ${deviceImei}.`, 403);
+    }
+
+    // Join geofence-specific rooms
+    const deviceGeofenceRoom = `geofence:device:${deviceImei}`;
+    socket.join(deviceGeofenceRoom);
+
+    if (userEmail) {
+      const userGeofenceRoom = `geofence:user:${userEmail}`;
+      socket.join(userGeofenceRoom);
+    }
+
+    console.log(
+      `[Geofence] 👤 User '${user.email}' joined geofence room for device ${deviceImei}`
+    );
+
+    socket.emit('geofence_room_joined', {
+      message: `Successfully joined geofence monitoring for device ${deviceImei}`,
+      deviceImei,
+      rooms: [deviceGeofenceRoom, userEmail ? `geofence:user:${userEmail}` : null].filter(Boolean)
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to join geofence room";
+    const errorCode = error instanceof CustomError ? error.statusCode : 500;
+    console.error(`[Geofence] ❌ Error joining room: ${errorMessage}`);
+    socket.emit("error", {
+      message: "Failed to join geofence room",
+      details: errorMessage,
+      code: errorCode,
+    });
+  }
 }
+
+/**
+ * Handle leaving geofence room
+ */
+private async handleLeaveGeofenceRoom(
+  socket: Socket<any, any, any, SocketData>,
+  data: GeofenceRoomData
+): Promise<void> {
+  try {
+    const { deviceImei, userEmail } = data;
+
+    const deviceGeofenceRoom = `geofence:device:${deviceImei}`;
+    socket.leave(deviceGeofenceRoom);
+
+    if (userEmail) {
+      const userGeofenceRoom = `geofence:user:${userEmail}`;
+      socket.leave(userGeofenceRoom);
+    }
+
+    console.log(`[Geofence] 🚪 Socket ${socket.id} left geofence room for device ${deviceImei}`);
+
+    socket.emit('geofence_room_left', {
+      message: `Left geofence monitoring for device ${deviceImei}`,
+      deviceImei
+    });
+
+  } catch (error) {
+    console.error(`[Geofence] ❌ Error leaving room:`, error);
+  }
+}
+
+/**
+ * Broadcast geofence event to relevant clients
+ */
+public broadcastGeofenceEvent(event: GeofenceEvent): void {
+  const deviceRoom = `geofence:device:${event.deviceImei}`;
+  
+  console.log(
+    `[Geofence] 🎯 Broadcasting ${event.type} event for device ${event.deviceImei} to room '${deviceRoom}'`
+  );
+
+  // Broadcast to device-specific room
+  this.io.to(deviceRoom).emit('geofence-event', event);
+
+  // Also broadcast to user room if specified
+  if (event.userEmail) {
+    const userRoom = `geofence:user:${event.userEmail}`;
+    this.io.to(userRoom).emit('geofence-event', event);
+  }
+
+  // Broadcast to general watchers of this device
+  const watchRoom = `watch:${event.deviceImei}`;
+  this.io.to(watchRoom).emit('geofence-event', event);
+}
+
+/**
+ * Test geofence event (for development)
+ */
+private async handleTestGeofenceEvent(
+  socket: Socket<any, any, any, SocketData>,
+  data: GeofenceEvent
+): Promise<void> {
+  try {
+    const user = socket.data.user;
+
+    if (!user) {
+      throw new CustomError("Authentication required.", 401);
+    }
+
+    // Verify user owns the device
+    const device = await Device.findOne({ imei: data.deviceImei, user: user.userId });
+    if (!device) {
+      throw new CustomError(`Access denied to device ${data.deviceImei}.`, 403);
+    }
+
+    console.log(`[Geofence] 🧪 Test event received from user ${user.email}:`, data);
+    
+    // Add timestamp if not provided
+    const eventWithTimestamp = {
+      ...data,
+      timestamp: data.timestamp || Date.now()
+    };
+
+    // Broadcast the test event
+    this.broadcastGeofenceEvent(eventWithTimestamp);
+
+    socket.emit('test_geofence_event_sent', {
+      message: `Test ${data.type} event broadcasted for device ${data.deviceImei}`,
+      event: eventWithTimestamp
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to send test event";
+    const errorCode = error instanceof CustomError ? error.statusCode : 500;
+    console.error(`[Geofence] ❌ Test event error: ${errorMessage}`);
+    socket.emit("error", {
+      message: "Failed to send test geofence event",
+      details: errorMessage,
+      code: errorCode,
+    });
+  }
+}
+}
+
+

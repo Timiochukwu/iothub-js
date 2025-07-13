@@ -29,6 +29,15 @@ export interface IGeofence extends Document {
   alertOnExit: boolean;
   isActive: boolean;
   
+  // Additional properties (these were missing)
+  address?: string;
+  locationName?: string;
+  color?: string;
+  tags?: string[];
+  lastActivity?: Date;
+  isTemplate?: boolean;
+  templateName?: string;
+  
   // Metadata
   createdAt: Date;
   updatedAt: Date;
@@ -84,6 +93,35 @@ const GeofenceSchema = new Schema<IGeofence>({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Add the missing schema fields
+  address: {
+    type: String,
+    trim: true,
+    maxlength: 200
+  },
+  locationName: {
+    type: String,
+    trim: true,
+    maxlength: 100
+  },
+  color: {
+    type: String,
+    trim: true,
+    default: '#3B82F6' // Default blue color
+  },
+  tags: [{
+    type: String,
+    trim: true,
+    lowercase: true
+  }],
+  lastActivity: {
+    type: Date,
+    default: Date.now
+  },
+  isTemplate: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
@@ -112,6 +150,9 @@ GeofenceSchema.pre('save', function(next) {
 GeofenceSchema.index({ deviceImei: 1 });
 GeofenceSchema.index({ userEmail: 1 });
 GeofenceSchema.index({ isActive: 1 });
+GeofenceSchema.index({ isTemplate: 1 });
+GeofenceSchema.index({ tags: 1 });
+GeofenceSchema.index({ lastActivity: -1 });
 GeofenceSchema.index({ 'center.lat': 1, 'center.lng': 1 });
 
 export const Geofence = mongoose.model<IGeofence>('Geofence', GeofenceSchema);

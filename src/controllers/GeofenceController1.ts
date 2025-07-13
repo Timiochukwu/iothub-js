@@ -1,13 +1,16 @@
 // src/controllers/GeofenceController.ts
 import { Request, Response } from 'express';
 import { GeofenceService, CreateGeofenceRequest, BulkOperation } from '../services/GeofenceService';
+import { WebSocketService } from '../services/WebSocketService';
 import { CustomError } from '../middleware/errorHandler';
 
 export class GeofenceController {
   private geofenceService: GeofenceService;
+  private webSocketService: WebSocketService;
 
-  constructor() {
+  constructor(webSocketService: WebSocketService) {
     this.geofenceService = new GeofenceService();
+    this.webSocketService = webSocketService;
   }
 
   // POST /api/geofences - Create new geofence
@@ -15,6 +18,9 @@ export class GeofenceController {
     try {
       const geofenceData: CreateGeofenceRequest = req.body;
       const geofence = await this.geofenceService.createGeofence(geofenceData);
+      
+      // Notify WebSocket clients
+      this.webSocketService.notifyGeofenceCreated(geofence);
       
       res.status(201).json({
         success: true,
@@ -41,6 +47,9 @@ export class GeofenceController {
 
       const updateData: Partial<CreateGeofenceRequest> = req.body;
       const geofence = await this.geofenceService.updateGeofence(id, updateData);
+      
+      // Notify WebSocket clients
+      this.webSocketService.notifyGeofenceUpdated(geofence);
       
       res.status(200).json({
         success: true,
@@ -158,7 +167,26 @@ export class GeofenceController {
         return;
       }
 
+      // Get geofence data before deletion for notification
+      const geofence = await this.geofenceService.getGeofenceById(id);
+      if (!geofence) {
+        res.status(404).json({
+          success: false,
+          message: 'Geofence not found',
+          error: 'NOT_FOUND'
+        });
+        return;
+      }
+
       await this.geofenceService.deleteGeofence(id);
+      
+      // Notify WebSocket clients
+      this.webSocketService.notifyGeofenceDeleted(
+        id, 
+        geofence.name, 
+        geofence.userEmail, 
+        geofence.deviceImei
+      );
       
       res.status(200).json({
         success: true,
@@ -195,6 +223,15 @@ export class GeofenceController {
 
       const geofence = await this.geofenceService.toggleGeofence(id, isActive);
       
+      // Notify WebSocket clients
+      this.webSocketService.notifyGeofenceToggled(
+        id, 
+        geofence.name, 
+        isActive, 
+        geofence.userEmail, 
+        geofence.deviceImei
+      );
+      
       res.status(200).json({
         success: true,
         message: `Geofence ${isActive ? 'activated' : 'deactivated'} successfully`,
@@ -228,8 +265,39 @@ export class GeofenceController {
         return;
       }
 
+      // Get geofence data before bulk operation for notifications
+      const geofences = await Promise.all(
+        ids.map(id => this.geofenceService.getGeofenceById(id))
+      );
+
       const bulkOp: BulkOperation = { ids, operation };
       const result = await this.geofenceService.bulkOperation(bulkOp);
+      
+      // Notify WebSocket clients for successful operations
+      geofences.forEach((geofence, index) => {
+        if (geofence && !result.errors.find(err => err.id === ids[index])) {
+          switch (operation) {
+            case 'activate':
+            case 'deactivate':
+              this.webSocketService.notifyGeofenceToggled(
+                geofence._id.toString(),
+                geofence.name,
+                operation === 'activate',
+                geofence.userEmail,
+                geofence.deviceImei
+              );
+              break;
+            case 'delete':
+              this.webSocketService.notifyGeofenceDeleted(
+                geofence._id.toString(),
+                geofence.name,
+                geofence.userEmail,
+                geofence.deviceImei
+              );
+              break;
+          }
+        }
+      });
       
       res.status(200).json({
         success: true,
@@ -257,6 +325,9 @@ export class GeofenceController {
       }
 
       const geofence = await this.geofenceService.createFromTemplate(templateId, overrides);
+      
+      // Notify WebSocket clients
+      this.webSocketService.notifyGeofenceCreated(geofence);
       
       res.status(201).json({
         success: true,
@@ -336,6 +407,16 @@ export class GeofenceController {
         return;
       }
 
+      // Validate date range
+      if (query.startDate && query.endDate && query.startDate > query.endDate) {
+        res.status(400).json({
+          success: false,
+          message: 'Start date cannot be after end date',
+          error: 'INVALID_DATE_RANGE'
+        });
+        return;
+      }
+
       const result = await this.geofenceService.getGeofenceEvents(query);
       
       res.status(200).json({
@@ -360,16 +441,16 @@ export class GeofenceController {
     }
   };
 
-  // GET /api/geofences/device/:imei - Get active geofences for device
+  // GET /api/geofences/device/:imei - Get active geofences for a device
   getDeviceGeofences = async (req: Request, res: Response): Promise<void> => {
     try {
       const { imei } = req.params;
-
+      
       if (!imei) {
-        res.status(400).json({ 
-          success: false, 
-          message: 'Device IMEI is required', 
-          error: 'MISSING_IMEI' 
+        res.status(400).json({
+          success: false,
+          message: 'Device IMEI is required',
+          error: 'MISSING_IMEI'
         });
         return;
       }
@@ -380,7 +461,7 @@ export class GeofenceController {
         success: true,
         data: geofences,
         meta: {
-          total: geofences.length,
+          count: geofences.length,
           deviceImei: imei
         }
       });
@@ -389,8 +470,198 @@ export class GeofenceController {
     }
   };
 
-  // Error handling utility
+  // POST /api/geofences/check - Check if point is inside geofences
+  checkPoint = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { lat, lng, imei } = req.body;
+
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        res.status(400).json({
+          success: false,
+          message: 'Latitude and longitude must be numbers',
+          error: 'INVALID_COORDINATES'
+        });
+        return;
+      }
+
+      if (lat < -90 || lat > 90) {
+        res.status(400).json({
+          success: false,
+          message: 'Latitude must be between -90 and 90 degrees',
+          error: 'INVALID_LATITUDE'
+        });
+        return;
+      }
+
+      if (lng < -180 || lng > 180) {
+        res.status(400).json({
+          success: false,
+          message: 'Longitude must be between -180 and 180 degrees',
+          error: 'INVALID_LONGITUDE'
+        });
+        return;
+      }
+
+      if (!imei) {
+        res.status(400).json({
+          success: false,
+          message: 'Device IMEI is required',
+          error: 'MISSING_IMEI'
+        });
+        return;
+      }
+
+      const geofences = await this.geofenceService.getActiveGeofencesForDevice(imei);
+      const insideGeofences = [];
+
+      for (const geofence of geofences) {
+        let isInside = false;
+        
+        if (geofence.type === 'circle' && geofence.center && geofence.radius) {
+          isInside = this.geofenceService.isPointInCircle(
+            lat, lng, 
+            geofence.center.lat, 
+            geofence.center.lng, 
+            geofence.radius
+          );
+        } else if (geofence.type === 'polygon' && geofence.coordinates) {
+          isInside = this.geofenceService.isPointInPolygon(lat, lng, geofence.coordinates);
+        }
+
+        if (isInside) {
+          insideGeofences.push({
+            id: geofence._id,
+            name: geofence.name,
+            type: geofence.type,
+            alertOnEntry: geofence.alertOnEntry,
+            alertOnExit: geofence.alertOnExit,
+            color: geofence.color,
+            tags: geofence.tags
+          });
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          point: { lat, lng },
+          insideGeofences,
+          count: insideGeofences.length
+        }
+      });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
+  // POST /api/geofences/duplicate/:id - Duplicate a geofence
+  duplicateGeofence = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { name, deviceImei, userEmail } = req.body;
+
+      if (!id) {
+        res.status(400).json({
+          success: false,
+          message: 'Geofence ID is required',
+          error: 'MISSING_ID'
+        });
+        return;
+      }
+
+      const originalGeofence = await this.geofenceService.getGeofenceById(id);
+      if (!originalGeofence) {
+        res.status(404).json({
+          success: false,
+          message: 'Geofence not found',
+          error: 'NOT_FOUND'
+        });
+        return;
+      }
+
+      const duplicateData: CreateGeofenceRequest = {
+        name: name || `${originalGeofence.name} Copy`,
+        description: originalGeofence.description,
+        type: originalGeofence.type,
+        center: originalGeofence.center,
+        radius: originalGeofence.radius,
+        coordinates: originalGeofence.coordinates,
+        deviceImei: deviceImei || originalGeofence.deviceImei,
+        userEmail: userEmail || originalGeofence.userEmail,
+        alertOnEntry: originalGeofence.alertOnEntry,
+        alertOnExit: originalGeofence.alertOnExit,
+        address: originalGeofence.address,
+        locationName: originalGeofence.locationName,
+        color: originalGeofence.color,
+        tags: originalGeofence.tags,
+        isTemplate: false
+      };
+
+      const duplicatedGeofence = await this.geofenceService.createGeofence(duplicateData);
+      
+      // Notify WebSocket clients
+      this.webSocketService.notifyGeofenceCreated(duplicatedGeofence);
+      
+      res.status(201).json({
+        success: true,
+        message: 'Geofence duplicated successfully',
+        data: duplicatedGeofence
+      });
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
+  // GET /api/geofences/export - Export geofences
+  exportGeofences = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { format = 'json', deviceImei, userEmail } = req.query;
+
+      if (!['json', 'csv'].includes(format as string)) {
+        res.status(400).json({
+          success: false,
+          message: 'Format must be either json or csv',
+          error: 'INVALID_FORMAT'
+        });
+        return;
+      }
+
+      const query = {
+        deviceImei: deviceImei as string,
+        userEmail: userEmail as string,
+        isTemplate: false,
+        limit: 1000 // Export limit
+      };
+
+      const result = await this.geofenceService.listGeofences(query);
+      
+      if (format === 'json') {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', 'attachment; filename="geofences.json"');
+        res.status(200).json(result.geofences);
+      } else {
+        // CSV format
+        const csvHeaders = 'Name,Type,Description,Center Lat,Center Lng,Radius,Active,Created At\n';
+        const csvData = result.geofences.map(g => {
+          const centerLat = g.center?.lat || '';
+          const centerLng = g.center?.lng || '';
+          const radius = g.radius || '';
+          return `"${g.name}","${g.type}","${g.description || ''}","${centerLat}","${centerLng}","${radius}","${g.isActive}","${g.createdAt}"`;
+        }).join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="geofences.csv"');
+        res.status(200).send(csvHeaders + csvData);
+      }
+    } catch (error) {
+      this.handleError(res, error);
+    }
+  };
+
+  // Private helper method for error handling
   private handleError(res: Response, error: any): void {
+    console.error('GeofenceController Error:', error);
+    
     if (error instanceof CustomError) {
       res.status(error.statusCode).json({
         success: false,
@@ -398,10 +669,9 @@ export class GeofenceController {
         error: error.code || 'CUSTOM_ERROR'
       });
     } else {
-      console.error('Unexpected error:', error);
       res.status(500).json({
         success: false,
-        message: 'An unexpected error occurred',
+        message: 'An unexpected error occurred. Please try again later.',
         error: 'INTERNAL_SERVER_ERROR'
       });
     }

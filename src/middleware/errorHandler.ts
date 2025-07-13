@@ -6,15 +6,23 @@ export interface AppError extends Error {
   isOperational?: boolean;
 }
 
-export class CustomError extends Error implements AppError {
+export class CustomError extends Error {
   public statusCode: number;
+  public code: string; // Add this property
   public isOperational: boolean;
 
-  constructor(message: string, statusCode: number = 500) {
+  constructor(
+    message: string, 
+    statusCode: number = 500, 
+    code: string = 'INTERNAL_ERROR', // Add code parameter
+    isOperational: boolean = true
+  ) {
     super(message);
     this.statusCode = statusCode;
-    this.isOperational = true;
-
+    this.code = code; // Set the code property
+    this.isOperational = isOperational;
+    
+    // Maintains proper stack trace for where our error was thrown
     Error.captureStackTrace(this, this.constructor);
   }
 }
@@ -65,6 +73,30 @@ export const errorHandler = (
     message,
     error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
   });
+};
+
+export const createValidationError = (message: string): CustomError => {
+  return new CustomError(message, 400, 'VALIDATION_ERROR');
+};
+
+export const createNotFoundError = (message: string): CustomError => {
+  return new CustomError(message, 404, 'NOT_FOUND');
+};
+
+export const createUnauthorizedError = (message: string): CustomError => {
+  return new CustomError(message, 401, 'UNAUTHORIZED');
+};
+
+export const createForbiddenError = (message: string): CustomError => {
+  return new CustomError(message, 403, 'FORBIDDEN');
+};
+
+export const createConflictError = (message: string): CustomError => {
+  return new CustomError(message, 409, 'CONFLICT');
+};
+
+export const createInternalError = (message: string): CustomError => {
+  return new CustomError(message, 500, 'INTERNAL_ERROR');
 };
 
 export const notFoundHandler = (
