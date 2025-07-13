@@ -13,7 +13,7 @@ export class EngineHealthController {
   async getEngineHealth(req: Request, res: Response): Promise<void> {
     try {
       const { imei } = req.params;
-      const { startDate, endDate, type = 'daily' } = req.query;
+      const { startDate, endDate, type = "daily" } = req.query;
 
       if (!imei) {
         throw new CustomError("IMEI is required", 400);
@@ -36,24 +36,24 @@ export class EngineHealthController {
 
       // Convert Map to Array for JSON response - FIXED
       const engineDataArray = Array.from(engineData, ([dateKey, data]) => ({
-        ...data
+        ...data,
       }));
 
       res.status(200).json({
         success: true,
         data: engineDataArray,
-        message: "Engine health data retrieved successfully"
+        message: "Engine health data retrieved successfully",
       });
     } catch (error) {
       if (error instanceof CustomError) {
         res.status(error.statusCode).json({
           success: false,
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           success: false,
-          message: "Internal server error"
+          message: "Internal server error",
         });
       }
     }
@@ -67,50 +67,33 @@ export class EngineHealthController {
         throw new CustomError("IMEI is required", 400);
       }
 
-      const today = new Date();
-      const yesterday = new Date();
-      yesterday.setDate(today.getDate() - 1);
-
-      const engineData = await this.engineHealthService.getEngineHealthData(
-        imei,
-        yesterday,
-        today,
-        'daily'
-      );
-
-      const currentData = Array.from(engineData.values())[0];
-
-      if (!currentData) {
-        res.status(404).json({
-          success: false,
-          message: "No engine data found"
-        });
-        return;
-      }
+      const currentData =
+        await this.engineHealthService.getCurrentEngineStatus(imei);
 
       res.status(200).json({
         success: true,
-        data: {
-          ignitionStatus: currentData.ignitionStatus,
-          engineStatus: currentData.engineStatus,
-          avgRpm: currentData.avgRpm,
-          temperature: currentData.temperature,
-          oilLevel: currentData.oilLevel,
-          speed: currentData.speed,
-          activeFaults: currentData.activeFaults
-        },
-        message: "Current engine status retrieved successfully"
+        data: currentData,
+        // {
+        //   ignitionStatus: currentData.ignitionStatus,
+        //   engineStatus: currentData.engineStatus,
+        //   avgRpm: currentData.avgRpm,
+        //   temperature: currentData.temperature,
+        //   oilLevel: currentData.oilLevel,
+        //   speed: currentData.speed,
+        //   activeFaults: currentData.activeFaults,
+        // },
+        message: "Current engine status retrieved successfully",
       });
     } catch (error) {
       if (error instanceof CustomError) {
         res.status(error.statusCode).json({
           success: false,
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           success: false,
-          message: "Internal server error"
+          message: "Internal server error",
         });
       }
     }
@@ -146,18 +129,18 @@ export class EngineHealthController {
       res.status(200).json({
         success: true,
         data: faultData,
-        message: `Found ${faultData.length} active fault(s)`
+        message: `Found ${faultData.length} active fault(s)`,
       });
     } catch (error) {
       if (error instanceof CustomError) {
         res.status(error.statusCode).json({
           success: false,
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           success: false,
-          message: "Internal server error"
+          message: "Internal server error",
         });
       }
     }
@@ -177,8 +160,13 @@ export class EngineHealthController {
 
       // Get both engine health and active faults
       const [engineData, activeFaults] = await Promise.all([
-        this.engineHealthService.getEngineHealthData(imei, yesterday, today, 'daily'),
-        this.engineHealthService.getActiveDTCs(imei, yesterday, today)
+        this.engineHealthService.getEngineHealthData(
+          imei,
+          yesterday,
+          today,
+          "daily"
+        ),
+        this.engineHealthService.getActiveDTCs(imei, yesterday, today),
       ]);
 
       const currentData = Array.from(engineData.values())[0];
@@ -186,7 +174,7 @@ export class EngineHealthController {
       if (!currentData) {
         res.status(404).json({
           success: false,
-          message: "No engine data found"
+          message: "No engine data found",
         });
         return;
       }
@@ -201,7 +189,7 @@ export class EngineHealthController {
       }
 
       if (currentData.activeFaults > 0) {
-        healthScore -= (currentData.activeFaults * 20);
+        healthScore -= currentData.activeFaults * 20;
         alerts.push(`${currentData.activeFaults} active fault code(s)`);
       }
 
@@ -223,20 +211,20 @@ export class EngineHealthController {
           healthScore: Math.max(0, healthScore),
           status,
           alerts,
-          activeFaultDetails: activeFaults
+          activeFaultDetails: activeFaults,
         },
-        message: "Engine health summary retrieved successfully"
+        message: "Engine health summary retrieved successfully",
       });
     } catch (error) {
       if (error instanceof CustomError) {
         res.status(error.statusCode).json({
           success: false,
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           success: false,
-          message: "Internal server error"
+          message: "Internal server error",
         });
       }
     }

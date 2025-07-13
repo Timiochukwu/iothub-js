@@ -4,8 +4,12 @@ import { Request, Response } from "express";
 export const getNotifications = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
+    const limit = 10;
+    const { page = 1 } = (req as any).query;
     const notifications = await Notification.find({ user: userId })
       .sort({ timestamp: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
       .exec();
 
     res.json({

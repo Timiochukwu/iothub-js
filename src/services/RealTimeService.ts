@@ -935,19 +935,19 @@ export class RealTimeService {
     const previousPoint = previousTelemetry?.state?.reported as any;
     const currentPoint = currentTelemetry?.state?.reported as any;
 
-    console.log("Full: ", recentTelemetry);
+    // console.log("Full: ", recentTelemetry);
 
-    console.log("currentTelemetry: ", currentTelemetry);
-    console.log("previousTelemetry: ", previousTelemetry);
+    // console.log("currentTelemetry: ", currentTelemetry);
+    // console.log("previousTelemetry: ", previousTelemetry);
 
-    console.log("currentPoint: ", currentPoint);
-    console.log("previousPoint: ", previousPoint);
+    // console.log("currentPoint: ", currentPoint);
+    // console.log("previousPoint: ", previousPoint);
 
     if (!previousPoint || !currentPoint) {
       console.log(`Telemetry data is malformed for IMEI ${imei}.`);
       return false;
     }
-    console.log(currentPoint);
+    // console.log(currentPoint);
 
     // Use OBD speed (37) or GPS speed ('sp') as a fallback
 
