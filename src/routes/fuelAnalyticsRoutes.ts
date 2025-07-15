@@ -5,22 +5,23 @@ const router = Router();
 const fuelAnalyticsController = new FuelAnalyticsController();
 import { authenticateToken } from "../middleware/auth";
 
-
 // Get fuel analytics report
 router.get(
-  "/:imei/analytics", authenticateToken,
+  "/:imei/analytics",
+  authenticateToken,
   fuelAnalyticsController.getFuelAnalytics.bind(fuelAnalyticsController)
 );
 
-// Get daily fuel bar chart data
-router.get(
-  "/:imei/bar-chart", authenticateToken,
-  fuelAnalyticsController.getDailyFuelBarChart.bind(fuelAnalyticsController)
-);
+// // Get daily fuel bar chart data
+// router.get(
+//   "/:imei/bar-chart", authenticateToken,
+//   fuelAnalyticsController.getDailyFuelBarChart.bind(fuelAnalyticsController)
+// );
 
 // Get current fuel level
 router.get(
-  "/:imei/current", authenticateToken,
+  "/:imei/current",
+  authenticateToken,
   fuelAnalyticsController.getCurrentFuelLevel.bind(fuelAnalyticsController)
 );
 
