@@ -16,67 +16,96 @@ export class EngineHealthService {
     const speedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
     const dtcKey = `state.reported.${AVL_ID_MAP.DTC_COUNT}`;
 
-    // Get current status from latest telemetry
-    const latestTelemetry = await Telemetry.findOne({ imei })
-      .sort({ [tsKey]: -1 })
-      .select({
-        [tsKey]: 1,
-        [rpmKey]: 1,
-        [speedKey]: 1,
-        [tempKey]: 1,
-        [dtcKey]: 1,
-        [ignitionKey]: 1,
-      });
-
-    let currentIgnitionStatus = "OFF";
-    if (latestTelemetry) {
-      const reported = latestTelemetry.state?.reported;
-      const currentRpm = reported?.[AVL_ID_MAP.ENGINE_RPM];
-      const currentSpeed = reported?.[AVL_ID_MAP.SPEED];
-      const currentIgnition = reported?.[AVL_ID_MAP.IGNITION];
-
-      if (
-        currentIgnition === 1 ||
-        (currentRpm && currentRpm > 0) ||
-        (currentSpeed && currentSpeed > 0)
-      ) {
-        currentIgnitionStatus = "ON";
-      }
-    }
+    const reportMap = new Map<string, EngineHealthData>();
 
     const pipeline: any[] = [
       {
         $match: {
           imei,
           [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          // Ensure relevant keys exist for calculations
           [rpmKey]: { $exists: true },
           [tempKey]: { $exists: true },
           [speedKey]: { $exists: true },
           [dtcKey]: { $exists: true },
         },
       },
-
       {
         $group: {
-          _id: null,
-          currentSpeed: { $first: `$${speedKey}` },
-          currentTemp: { $first: `$${tempKey}` },
-          activeFaults: { $first: `$${dtcKey}` },
+          _id:
+            type === "daily"
+              ? {
+                  year: { $year: { $toDate: `$${tsKey}` } },
+                  month: { $month: { $toDate: `$${tsKey}` } },
+                  day: { $dayOfMonth: { $toDate: `$${tsKey}` } },
+                }
+              : type === "weekly"
+                ? {
+                    year: { $year: { $toDate: `$${tsKey}` } },
+                    week: { $week: { $toDate: `$${tsKey}` } },
+                  }
+                : {
+                    year: { $year: { $toDate: `$${tsKey}` } },
+                    month: { $month: { $toDate: `$${tsKey}` } },
+                  },
           avgRpm: { $avg: `$${rpmKey}` },
+          avgTemperature: { $avg: `$${tempKey}` },
+          avgSpeed: { $avg: `$${speedKey}` },
+          // Get the maximum DTC count within the grouped period
+          maxActiveFaults: { $max: `$${dtcKey}` },
+          // Check if any readings in the group indicate ignition/movement
+          hasIgnitionOrMovement: {
+            $max: {
+              $cond: [
+                {
+                  $or: [
+                    // Corrected: Compare directly to the field value, not the string key
+                    `$${ignitionKey}`, // This will evaluate to 0 or 1
+                    { $gt: [`$${rpmKey}`, 0] },
+                    { $gt: [`$${speedKey}`, 0] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
           readingCount: { $sum: 1 },
         },
       },
-
       {
         $project: {
           _id: 0,
+          date: {
+            $dateToString: {
+              format:
+                type === "daily"
+                  ? "%Y-%m-%d"
+                  : type === "weekly"
+                    ? "%Y-W%U"
+                    : "%Y-%m",
+              date: {
+                $dateFromParts: {
+                  year: "$_id.year",
+                  month: type === "weekly" ? 1 : "$_id.month", // For weekly, month is not directly used for formatting date, set to 1
+                  day: type === "daily" ? "$_id.day" : 1, // For monthly/weekly, day is not directly used for formatting date, set to 1
+                },
+              },
+            },
+          },
           avgRpm: { $round: ["$avgRpm", 0] },
-          temperature: "$currentTemp",
-          speed: "$currentSpeed",
-          activeFaults: "$activeFaults",
+          temperature: { $round: ["$avgTemperature", 0] },
+          speed: { $round: ["$avgSpeed", 0] },
+          activeFaults: "$maxActiveFaults",
+          ignitionStatus: {
+            $cond: ["$hasIgnitionOrMovement", "ON", "OFF"],
+          },
+          engineStatus: {
+            $cond: ["$hasIgnitionOrMovement", "ON", "OFF"],
+          },
           oilLevel: {
             $cond: {
-              if: { $gt: ["$activeFaults", 0] },
+              if: { $gt: ["$maxActiveFaults", 0] },
               then: "CHECK_REQUIRED",
               else: "NORMAL",
             },
@@ -84,28 +113,27 @@ export class EngineHealthService {
           hasData: { $gt: ["$readingCount", 0] },
         },
       },
+      {
+        $sort: { date: 1 }, // Sort by date to get chronological order
+      },
     ];
 
     const results = await Telemetry.aggregate(pipeline);
 
-    const reportMap = new Map<string, EngineHealthData>();
-    const today = new Date().toISOString().split("T")[0]!;
-
-    if (results.length > 0) {
-      const data = results[0];
-      reportMap.set(today, {
-        date: today,
-        ignitionStatus: currentIgnitionStatus,
-        engineStatus: currentIgnitionStatus,
+    results.forEach((data) => {
+      reportMap.set(data.date, {
+        date: data.date,
+        ignitionStatus: data.ignitionStatus,
+        engineStatus: data.engineStatus,
         avgRpm: data.avgRpm,
         temperature: data.temperature,
         oilLevel: data.oilLevel,
         speed: data.speed,
         activeFaults: data.activeFaults,
-        dtcFaults: [],
+        dtcFaults: [], // DTC faults are fetched separately by getActiveDTCs
         hasData: data.hasData,
       });
-    }
+    });
 
     return reportMap;
   }

@@ -13,7 +13,7 @@ export class BatteryAnalyticsController {
   async getBatteryAnalytics(req: Request, res: Response): Promise<void> {
     try {
       const { imei } = req.params;
-      const { startDate, endDate, type = 'daily' } = req.query;
+      const { startDate, endDate, type = "daily" } = req.query;
 
       if (!imei) {
         throw new CustomError("IMEI is required", 400);
@@ -27,34 +27,35 @@ export class BatteryAnalyticsController {
       const end = new Date(endDate as string);
       const groupingType = type as ChartGroupingType;
 
-      const batteryData = await this.batteryAnalyticsService.getBatteryAnalyticsReport(
-        imei,
-        start,
-        end,
-        groupingType
-      );
+      const batteryData =
+        await this.batteryAnalyticsService.getBatteryAnalyticsReport(
+          imei,
+          start,
+          end,
+          groupingType
+        );
 
       // Convert Map to Array for JSON response
       const batteryDataArray = Array.from(batteryData, ([date, data]) => ({
         date,
-        ...data
+        ...data,
       }));
 
       res.status(200).json({
         success: true,
         data: batteryDataArray,
-        message: "Battery analytics retrieved successfully"
+        message: "Battery analytics retrieved successfully",
       });
     } catch (error) {
       if (error instanceof CustomError) {
         res.status(error.statusCode).json({
           success: false,
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           success: false,
-          message: "Internal server error"
+          message: "Internal server error",
         });
       }
     }
@@ -63,25 +64,28 @@ export class BatteryAnalyticsController {
   async getCurrentBatteryStatus(req: Request, res: Response): Promise<void> {
     try {
       const { imei } = req.params;
-  
+
       if (!imei) {
         throw new CustomError("IMEI is required", 400);
       }
-  
-      const currentBattery = await this.batteryAnalyticsService.getCurrentBatteryStatus(imei);
-  
+
+      const currentBattery =
+        await this.batteryAnalyticsService.getCurrentBatteryStatus(imei);
+
+      console.log(`Current Battery Status for IMEI ${imei}:`, currentBattery);
+
       if (!currentBattery) {
         res.status(404).json({
           success: false,
-          message: "No battery data found"
+          message: "No battery data found",
         });
         return;
       }
-  
+
       res.status(200).json({
         success: true,
         data: currentBattery,
-        message: "Current battery status retrieved successfully"
+        message: "Current battery status retrieved successfully",
       });
     } catch (error) {
       // ... error handling
@@ -102,34 +106,43 @@ export class BatteryAnalyticsController {
       const startDate = new Date();
       startDate.setDate(endDate.getDate() - daysCount);
 
-      const batteryData = await this.batteryAnalyticsService.getBatteryAnalyticsReport(
-        imei,
-        startDate,
-        endDate,
-        'daily'
-      );
+      const batteryData =
+        await this.batteryAnalyticsService.getBatteryAnalyticsReport(
+          imei,
+          startDate,
+          endDate,
+          "daily"
+        );
 
       // Calculate battery health trends
       const batteryArray = Array.from(batteryData.values());
-      
+
       if (batteryArray.length === 0) {
         res.status(404).json({
           success: false,
-          message: "No battery data found for health analysis"
+          message: "No battery data found for health analysis",
         });
         return;
       }
 
       // Calculate average voltages
-      const avgStartingVoltage = batteryArray.reduce((sum, data) => sum + data.startingVoltage, 0) / batteryArray.length;
-      const avgEndingVoltage = batteryArray.reduce((sum, data) => sum + data.endingVoltage, 0) / batteryArray.length;
-      const avgMinVoltage = batteryArray.reduce((sum, data) => sum + data.minVoltage, 0) / batteryArray.length;
-      const avgMaxVoltage = batteryArray.reduce((sum, data) => sum + data.maxVoltage, 0) / batteryArray.length;
+      const avgStartingVoltage =
+        batteryArray.reduce((sum, data) => sum + data.startingVoltage, 0) /
+        batteryArray.length;
+      const avgEndingVoltage =
+        batteryArray.reduce((sum, data) => sum + data.endingVoltage, 0) /
+        batteryArray.length;
+      const avgMinVoltage =
+        batteryArray.reduce((sum, data) => sum + data.minVoltage, 0) /
+        batteryArray.length;
+      const avgMaxVoltage =
+        batteryArray.reduce((sum, data) => sum + data.maxVoltage, 0) /
+        batteryArray.length;
 
       // Determine overall health
       let overallHealth = "Unknown";
       let healthScore = 0;
-      
+
       if (avgMinVoltage >= 12.6) {
         overallHealth = "Excellent";
         healthScore = 95;
@@ -148,9 +161,15 @@ export class BatteryAnalyticsController {
       }
 
       // Calculate voltage drop (indication of battery degradation)
-      const voltageDrop = parseFloat((avgStartingVoltage - avgEndingVoltage).toFixed(3));
+      const voltageDrop = parseFloat(
+        (avgStartingVoltage - avgEndingVoltage).toFixed(3)
+      );
 
-      const recommendations = this.generateBatteryRecommendations(overallHealth, voltageDrop, avgMinVoltage);
+      const recommendations = this.generateBatteryRecommendations(
+        overallHealth,
+        voltageDrop,
+        avgMinVoltage
+      );
 
       res.status(200).json({
         success: true,
@@ -161,30 +180,34 @@ export class BatteryAnalyticsController {
             startingVoltage: parseFloat(avgStartingVoltage.toFixed(2)),
             endingVoltage: parseFloat(avgEndingVoltage.toFixed(2)),
             minVoltage: parseFloat(avgMinVoltage.toFixed(2)),
-            maxVoltage: parseFloat(avgMaxVoltage.toFixed(2))
+            maxVoltage: parseFloat(avgMaxVoltage.toFixed(2)),
           },
           voltageDrop,
           recommendations,
-          daysAnalyzed: batteryArray.length
+          daysAnalyzed: batteryArray.length,
         },
-        message: "Battery health analysis completed successfully"
+        message: "Battery health analysis completed successfully",
       });
     } catch (error) {
       if (error instanceof CustomError) {
         res.status(error.statusCode).json({
           success: false,
-          message: error.message
+          message: error.message,
         });
       } else {
         res.status(500).json({
           success: false,
-          message: "Internal server error"
+          message: "Internal server error",
         });
       }
     }
   }
 
-  private generateBatteryRecommendations(health: string, voltageDrop: number, minVoltage: number): string[] {
+  private generateBatteryRecommendations(
+    health: string,
+    voltageDrop: number,
+    minVoltage: number
+  ): string[] {
     const recommendations = [];
 
     if (health === "Critical" || health === "Poor") {
@@ -193,11 +216,15 @@ export class BatteryAnalyticsController {
     }
 
     if (voltageDrop > 0.5) {
-      recommendations.push("High voltage drop detected - check charging system");
+      recommendations.push(
+        "High voltage drop detected - check charging system"
+      );
     }
 
     if (minVoltage < 12.0) {
-      recommendations.push("Battery voltage critically low - immediate attention required");
+      recommendations.push(
+        "Battery voltage critically low - immediate attention required"
+      );
     }
 
     if (minVoltage < 12.4 && minVoltage >= 12.0) {
@@ -205,7 +232,9 @@ export class BatteryAnalyticsController {
     }
 
     if (health === "Excellent" || health === "Good") {
-      recommendations.push("Battery is in good condition - continue regular monitoring");
+      recommendations.push(
+        "Battery is in good condition - continue regular monitoring"
+      );
     }
 
     return recommendations;

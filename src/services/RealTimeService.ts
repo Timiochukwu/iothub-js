@@ -225,6 +225,10 @@ export class RealTimeService {
         console.log(
           `[Broadcast] 📡 Relayed DB change for ${newTelemetryDoc.imei} to room '${watchRoom}'.`
         );
+        console.log(
+          `[Broadcast] 📡 Emitting event '${eventName}' with payload:`,
+          eventPayload
+        );
       }
     });
 
