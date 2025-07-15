@@ -14,16 +14,20 @@ workingHoursRouter.put("/:deviceId", authenticateToken, async (req, res) => {
   await WorkingHoursController.update(req, res);
 });
 
+workingHoursRouter.put(
+  "/:deviceId/status",
+  authenticateToken,
+  async (req, res) => {
+    await WorkingHoursController.updateStatus(req, res);
+  }
+);
+
 workingHoursRouter.get("/", authenticateToken, async (req, res) => {
   await WorkingHoursController.getAll(req, res);
 });
-workingHoursRouter.delete(
-  "/working-hours/:id",
-  authenticateToken,
-  async (req, res) => {
-    await WorkingHoursController.delete(req, res);
-  }
-);
+workingHoursRouter.delete("/:id", authenticateToken, async (req, res) => {
+  await WorkingHoursController.delete(req, res);
+});
 
 // // Working hour alert endpoints
 // workingHoursRouter.post(

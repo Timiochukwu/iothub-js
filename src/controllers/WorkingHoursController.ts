@@ -72,6 +72,38 @@ export class WorkingHoursController {
     }
   }
 
+  static async updateStatus(req: Request, res: Response) {
+    try {
+      const { deviceId } = req.params;
+      const { status } = req.body;
+      if (!status || !["enabled", "disabled"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      // incase the data does not have status field before
+      const existingRecord = await WorkingHours.findById(deviceId);
+      if (!existingRecord) {
+        return res.status(404).json({ message: "Working hours not found" });
+      }
+
+      // update status
+      existingRecord.status = status;
+      const updatedRecord = await existingRecord.save();
+
+      if (!updatedRecord) {
+        return res.status(404).json({ message: "Working hours not found" });
+      }
+
+      return res.status(200).json({
+        message: `Working hours status updated to ${status}`,
+        data: updatedRecord,
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Failed to update status" });
+    }
+  }
+
   static async update(req: Request, res: Response) {
     try {
       const { deviceId } = req.params;

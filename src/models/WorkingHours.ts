@@ -7,6 +7,7 @@ const WorkingHoursSchema = new mongoose.Schema({
   startTime: { type: String, required: true },
   endTime: { type: String, required: true },
   triggered: { type: Boolean, default: false },
+  status: { type: String, enum: ["enabled", "disabled"], default: "enabled" },
   startLocation: {
     lat: Number,
     lng: Number,
