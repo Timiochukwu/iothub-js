@@ -23,7 +23,6 @@ import { WorkingHours } from "../models/WorkingHours";
 
 import { GeofenceService } from "./GeofenceService";
 
-
 const COLLISION_DECELERATION_THRESHOLD_KPH_S = 30;
 
 import { AVL_ID_MAP } from "../services/TelemetryService";
@@ -35,7 +34,7 @@ interface HistoryPayload {
 }
 
 interface GeofenceEvent {
-  type: 'entry' | 'exit';
+  type: "entry" | "exit";
   deviceImei: string;
   geofenceId: string;
   geofenceName: string;
@@ -86,7 +85,7 @@ export class RealTimeService {
   private userSockets: Map<string, Set<string>> = new Map(); // Key: user email, Value: Set of socketIds
   private notificationService: NotificationService;
 
-  private geofenceService?: GeofenceService;  
+  private geofenceService?: GeofenceService;
 
   constructor(httpServer: HTTPServer) {
     this.io = new SocketIOServer<any, any, any, SocketData>(httpServer, {
@@ -95,9 +94,9 @@ export class RealTimeService {
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         credentials: true,
         allowedHeaders: ["*"],
-        exposedHeaders: ["*"]
+        exposedHeaders: ["*"],
       },
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
       allowEIO3: true,
       pingTimeout: 60000,
       pingInterval: 25000,
@@ -105,7 +104,7 @@ export class RealTimeService {
       allowRequest: (req, fn) => {
         // Allow all requests for development
         fn(null, true);
-      }
+      },
     });
 
     this.telemetryService = new TelemetryService();
@@ -117,7 +116,7 @@ export class RealTimeService {
 
   public setGeofenceService(geofenceService: GeofenceService): void {
     this.geofenceService = geofenceService;
-    console.log('✅ GeofenceService connected to RealTimeService');
+    console.log("✅ GeofenceService connected to RealTimeService");
   }
 
   private setupSocketHandlers(): void {
@@ -153,23 +152,23 @@ export class RealTimeService {
       );
 
       // 🟢 NEW: Geofence Event Listeners
-    socket.on("join-geofence-room", (data: GeofenceRoomData) =>
-      this.handleJoinGeofenceRoom(socket, data)
-    );
-    socket.on("leave-geofence-room", (data: GeofenceRoomData) =>
-      this.handleLeaveGeofenceRoom(socket, data)
-    );
-    socket.on("test-geofence-event", (data: GeofenceEvent) =>
-      this.handleTestGeofenceEvent(socket, data)
-    );
+      socket.on("join-geofence-room", (data: GeofenceRoomData) =>
+        this.handleJoinGeofenceRoom(socket, data)
+      );
+      socket.on("leave-geofence-room", (data: GeofenceRoomData) =>
+        this.handleLeaveGeofenceRoom(socket, data)
+      );
+      socket.on("test-geofence-event", (data: GeofenceEvent) =>
+        this.handleTestGeofenceEvent(socket, data)
+      );
 
-    // Legacy support for the old event names
-    socket.on("join-device-room", (data: { deviceImei: string }) =>
-      this.handleJoinGeofenceRoom(socket, data)
-    );
-    socket.on("leave-device-room", (data: { deviceImei: string }) =>
-      this.handleLeaveGeofenceRoom(socket, data)
-    );
+      // Legacy support for the old event names
+      socket.on("join-device-room", (data: { deviceImei: string }) =>
+        this.handleJoinGeofenceRoom(socket, data)
+      );
+      socket.on("leave-device-room", (data: { deviceImei: string }) =>
+        this.handleLeaveGeofenceRoom(socket, data)
+      );
       socket.on("disconnect", (reason) =>
         this.handleDisconnection(socket, reason)
       );
@@ -839,74 +838,81 @@ export class RealTimeService {
     const deviceId = device._id?.toString();
 
     // get working hours
-    const workingHourData = await WorkingHours.findOne({ deviceId });
+    // const workingHourData = await WorkingHours.findOne({ deviceId });
+    // get all working hour for device
+    const workingHourData = await WorkingHours.find({ deviceId });
+
     if (!workingHourData) {
       console.log(`Working hours not found for device ID ${deviceId}.`);
       return;
     }
 
-    // check if current time is within working hours
-    const startTime = workingHourData.startTime;
-    const endTime = workingHourData.endTime;
+    workingHourData.forEach(async (workingHourData) => {
+      // check if current time is within working hours
+      const startTime = workingHourData.startTime;
+      const endTime = workingHourData.endTime;
 
-    const restingLocation = workingHourData.endLocation;
-    const restingLat = restingLocation?.lat;
-    const restingLng = restingLocation?.lng;
+      const restingLocation = workingHourData.endLocation;
+      const restingLat = restingLocation?.lat;
+      const restingLng = restingLocation?.lng;
 
-    const latLng = payload.state.reported[AVL_ID_MAP["LAT_LNG"]];
-    const lat = latLng ? latLng.split(",")[0] : null;
-    const lng = latLng ? latLng.split(",")[1] : null;
+      const latLng = payload.state.reported[AVL_ID_MAP["LAT_LNG"]];
+      const lat = latLng ? latLng.split(",")[0] : null;
+      const lng = latLng ? latLng.split(",")[1] : null;
 
-    let message = `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
+      let message = `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
 
-    const formatStartTime = new Date(
-      currentTime.toDateString() + " " + startTime
-    );
-    const formatEndTime = new Date(currentTime.toDateString() + " " + endTime);
+      const formatStartTime = new Date(
+        currentTime.toDateString() + " " + startTime
+      );
+      const formatEndTime = new Date(
+        currentTime.toDateString() + " " + endTime
+      );
 
-    // if (!(currentTime >= formatStartTime && currentTime <= formatEndTime)) {
-    if (
-      payload.state.reported.ts > formatEndTime.getTime() ||
-      payload.state.reported.ts < formatStartTime.getTime()
-    ) {
-      if (payload.state.reported[AVL_ID_MAP["MOVEMENT"]] == 1) {
-        // console.log(
-        //   `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`
-        // );
+      // if (!(currentTime >= formatStartTime && currentTime <= formatEndTime)) {
+      if (
+        payload.state.reported.ts > formatEndTime.getTime() ||
+        payload.state.reported.ts < formatStartTime.getTime()
+      ) {
+        if (payload.state.reported[AVL_ID_MAP["MOVEMENT"]] == 1) {
+          // console.log(
+          //   `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`
+          // );
 
-        if (restingLat !== lat && restingLng !== lng) {
-          message = `Device ${imei} is outside working hours and not at resting location. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
-        } else {
-          message = `Device ${imei} is outside working hours but at resting location. No alert triggered.`;
-          return;
+          if (restingLat !== lat && restingLng !== lng) {
+            message = `Device ${imei} is outside working hours and not at resting location. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
+          } else {
+            message = `Device ${imei} is outside working hours but at resting location. No alert triggered.`;
+            return;
+          }
+
+          workingHourData.triggered = true;
+          await workingHourData.save();
+
+          // await WorkingHourAlert.create({
+          //   device: deviceId,
+          //   imei,
+          //   timestamp: currentTime,
+          //   data: payload.state.reported,
+          //   location: {
+          //     lat: lat,
+          //     lng: lng,
+          //   },
+          //   status: "danger",
+          //   message,
+          // });
+
+          //store in notifications
+          const notification = {
+            user: device.user,
+            type: "working_hour_alert",
+            message,
+          };
+          await Notification.create(notification);
         }
-
-        workingHourData.triggered = true;
-        await workingHourData.save();
-
-        // await WorkingHourAlert.create({
-        //   device: deviceId,
-        //   imei,
-        //   timestamp: currentTime,
-        //   data: payload.state.reported,
-        //   location: {
-        //     lat: lat,
-        //     lng: lng,
-        //   },
-        //   status: "danger",
-        //   message,
-        // });
-
-        //store in notifications
-        const notification = {
-          user: device.user,
-          type: "working_hour_alert",
-          message,
-        };
-        await Notification.create(notification);
       }
-    }
-    // }
+      // }
+    });
   }
 
   private async handleCollisionByDeceleration(imei: string): Promise<any> {
@@ -1044,163 +1050,177 @@ export class RealTimeService {
   }
 
   /**
- * Handle geofence room joining
- */
-private async handleJoinGeofenceRoom(
-  socket: Socket<any, any, any, SocketData>,
-  data: GeofenceRoomData
-): Promise<void> {
-  try {
-    const { deviceImei, userEmail } = data;
-    const user = socket.data.user;
+   * Handle geofence room joining
+   */
+  private async handleJoinGeofenceRoom(
+    socket: Socket<any, any, any, SocketData>,
+    data: GeofenceRoomData
+  ): Promise<void> {
+    try {
+      const { deviceImei, userEmail } = data;
+      const user = socket.data.user;
 
-    // Authentication check
-    if (!user) {
-      throw new CustomError("Authentication required.", 401);
+      // Authentication check
+      if (!user) {
+        throw new CustomError("Authentication required.", 401);
+      }
+
+      if (!deviceImei) {
+        throw new CustomError("Device IMEI is required.", 400);
+      }
+
+      // Authorization check - verify user owns this device
+      const device = await Device.findOne({
+        imei: deviceImei,
+        user: user.userId,
+      });
+      if (!device) {
+        throw new CustomError(`Access denied to device ${deviceImei}.`, 403);
+      }
+
+      // Join geofence-specific rooms
+      const deviceGeofenceRoom = `geofence:device:${deviceImei}`;
+      socket.join(deviceGeofenceRoom);
+
+      if (userEmail) {
+        const userGeofenceRoom = `geofence:user:${userEmail}`;
+        socket.join(userGeofenceRoom);
+      }
+
+      console.log(
+        `[Geofence] 👤 User '${user.email}' joined geofence room for device ${deviceImei}`
+      );
+
+      socket.emit("geofence_room_joined", {
+        message: `Successfully joined geofence monitoring for device ${deviceImei}`,
+        deviceImei,
+        rooms: [
+          deviceGeofenceRoom,
+          userEmail ? `geofence:user:${userEmail}` : null,
+        ].filter(Boolean),
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to join geofence room";
+      const errorCode = error instanceof CustomError ? error.statusCode : 500;
+      console.error(`[Geofence] ❌ Error joining room: ${errorMessage}`);
+      socket.emit("error", {
+        message: "Failed to join geofence room",
+        details: errorMessage,
+        code: errorCode,
+      });
     }
+  }
 
-    if (!deviceImei) {
-      throw new CustomError("Device IMEI is required.", 400);
+  /**
+   * Handle leaving geofence room
+   */
+  private async handleLeaveGeofenceRoom(
+    socket: Socket<any, any, any, SocketData>,
+    data: GeofenceRoomData
+  ): Promise<void> {
+    try {
+      const { deviceImei, userEmail } = data;
+
+      const deviceGeofenceRoom = `geofence:device:${deviceImei}`;
+      socket.leave(deviceGeofenceRoom);
+
+      if (userEmail) {
+        const userGeofenceRoom = `geofence:user:${userEmail}`;
+        socket.leave(userGeofenceRoom);
+      }
+
+      console.log(
+        `[Geofence] 🚪 Socket ${socket.id} left geofence room for device ${deviceImei}`
+      );
+
+      socket.emit("geofence_room_left", {
+        message: `Left geofence monitoring for device ${deviceImei}`,
+        deviceImei,
+      });
+    } catch (error) {
+      console.error(`[Geofence] ❌ Error leaving room:`, error);
     }
+  }
 
-    // Authorization check - verify user owns this device
-    const device = await Device.findOne({ imei: deviceImei, user: user.userId });
-    if (!device) {
-      throw new CustomError(`Access denied to device ${deviceImei}.`, 403);
-    }
-
-    // Join geofence-specific rooms
-    const deviceGeofenceRoom = `geofence:device:${deviceImei}`;
-    socket.join(deviceGeofenceRoom);
-
-    if (userEmail) {
-      const userGeofenceRoom = `geofence:user:${userEmail}`;
-      socket.join(userGeofenceRoom);
-    }
+  /**
+   * Broadcast geofence event to relevant clients
+   */
+  public broadcastGeofenceEvent(event: GeofenceEvent): void {
+    const deviceRoom = `geofence:device:${event.deviceImei}`;
 
     console.log(
-      `[Geofence] 👤 User '${user.email}' joined geofence room for device ${deviceImei}`
+      `[Geofence] 🎯 Broadcasting ${event.type} event for device ${event.deviceImei} to room '${deviceRoom}'`
     );
 
-    socket.emit('geofence_room_joined', {
-      message: `Successfully joined geofence monitoring for device ${deviceImei}`,
-      deviceImei,
-      rooms: [deviceGeofenceRoom, userEmail ? `geofence:user:${userEmail}` : null].filter(Boolean)
-    });
+    // Broadcast to device-specific room
+    this.io.to(deviceRoom).emit("geofence-event", event);
 
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to join geofence room";
-    const errorCode = error instanceof CustomError ? error.statusCode : 500;
-    console.error(`[Geofence] ❌ Error joining room: ${errorMessage}`);
-    socket.emit("error", {
-      message: "Failed to join geofence room",
-      details: errorMessage,
-      code: errorCode,
-    });
-  }
-}
-
-/**
- * Handle leaving geofence room
- */
-private async handleLeaveGeofenceRoom(
-  socket: Socket<any, any, any, SocketData>,
-  data: GeofenceRoomData
-): Promise<void> {
-  try {
-    const { deviceImei, userEmail } = data;
-
-    const deviceGeofenceRoom = `geofence:device:${deviceImei}`;
-    socket.leave(deviceGeofenceRoom);
-
-    if (userEmail) {
-      const userGeofenceRoom = `geofence:user:${userEmail}`;
-      socket.leave(userGeofenceRoom);
+    // Also broadcast to user room if specified
+    if (event.userEmail) {
+      const userRoom = `geofence:user:${event.userEmail}`;
+      this.io.to(userRoom).emit("geofence-event", event);
     }
 
-    console.log(`[Geofence] 🚪 Socket ${socket.id} left geofence room for device ${deviceImei}`);
-
-    socket.emit('geofence_room_left', {
-      message: `Left geofence monitoring for device ${deviceImei}`,
-      deviceImei
-    });
-
-  } catch (error) {
-    console.error(`[Geofence] ❌ Error leaving room:`, error);
-  }
-}
-
-/**
- * Broadcast geofence event to relevant clients
- */
-public broadcastGeofenceEvent(event: GeofenceEvent): void {
-  const deviceRoom = `geofence:device:${event.deviceImei}`;
-  
-  console.log(
-    `[Geofence] 🎯 Broadcasting ${event.type} event for device ${event.deviceImei} to room '${deviceRoom}'`
-  );
-
-  // Broadcast to device-specific room
-  this.io.to(deviceRoom).emit('geofence-event', event);
-
-  // Also broadcast to user room if specified
-  if (event.userEmail) {
-    const userRoom = `geofence:user:${event.userEmail}`;
-    this.io.to(userRoom).emit('geofence-event', event);
+    // Broadcast to general watchers of this device
+    const watchRoom = `watch:${event.deviceImei}`;
+    this.io.to(watchRoom).emit("geofence-event", event);
   }
 
-  // Broadcast to general watchers of this device
-  const watchRoom = `watch:${event.deviceImei}`;
-  this.io.to(watchRoom).emit('geofence-event', event);
-}
+  /**
+   * Test geofence event (for development)
+   */
+  private async handleTestGeofenceEvent(
+    socket: Socket<any, any, any, SocketData>,
+    data: GeofenceEvent
+  ): Promise<void> {
+    try {
+      const user = socket.data.user;
 
-/**
- * Test geofence event (for development)
- */
-private async handleTestGeofenceEvent(
-  socket: Socket<any, any, any, SocketData>,
-  data: GeofenceEvent
-): Promise<void> {
-  try {
-    const user = socket.data.user;
+      if (!user) {
+        throw new CustomError("Authentication required.", 401);
+      }
 
-    if (!user) {
-      throw new CustomError("Authentication required.", 401);
+      // Verify user owns the device
+      const device = await Device.findOne({
+        imei: data.deviceImei,
+        user: user.userId,
+      });
+      if (!device) {
+        throw new CustomError(
+          `Access denied to device ${data.deviceImei}.`,
+          403
+        );
+      }
+
+      console.log(
+        `[Geofence] 🧪 Test event received from user ${user.email}:`,
+        data
+      );
+
+      // Add timestamp if not provided
+      const eventWithTimestamp = {
+        ...data,
+        timestamp: data.timestamp || Date.now(),
+      };
+
+      // Broadcast the test event
+      this.broadcastGeofenceEvent(eventWithTimestamp);
+
+      socket.emit("test_geofence_event_sent", {
+        message: `Test ${data.type} event broadcasted for device ${data.deviceImei}`,
+        event: eventWithTimestamp,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to send test event";
+      const errorCode = error instanceof CustomError ? error.statusCode : 500;
+      console.error(`[Geofence] ❌ Test event error: ${errorMessage}`);
+      socket.emit("error", {
+        message: "Failed to send test geofence event",
+        details: errorMessage,
+        code: errorCode,
+      });
     }
-
-    // Verify user owns the device
-    const device = await Device.findOne({ imei: data.deviceImei, user: user.userId });
-    if (!device) {
-      throw new CustomError(`Access denied to device ${data.deviceImei}.`, 403);
-    }
-
-    console.log(`[Geofence] 🧪 Test event received from user ${user.email}:`, data);
-    
-    // Add timestamp if not provided
-    const eventWithTimestamp = {
-      ...data,
-      timestamp: data.timestamp || Date.now()
-    };
-
-    // Broadcast the test event
-    this.broadcastGeofenceEvent(eventWithTimestamp);
-
-    socket.emit('test_geofence_event_sent', {
-      message: `Test ${data.type} event broadcasted for device ${data.deviceImei}`,
-      event: eventWithTimestamp
-    });
-
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to send test event";
-    const errorCode = error instanceof CustomError ? error.statusCode : 500;
-    console.error(`[Geofence] ❌ Test event error: ${errorMessage}`);
-    socket.emit("error", {
-      message: "Failed to send test geofence event",
-      details: errorMessage,
-      code: errorCode,
-    });
   }
 }
-}
-
-
