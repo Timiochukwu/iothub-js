@@ -1,411 +1,254 @@
 import { Telemetry } from "../models/Telemetry";
 import { AVL_ID_MAP } from "../utils/avlIdMap";
-import { FuelSummary, DailyFuelBarChartData, ChartGroupingType } from "../types";
+import { ChartGroupingType } from "../types"; // Assuming this exists for grouping
+// import { FuelSummary, CurrentFuelStatus } from "../types"; // Define these types as needed
 
 export class FuelAnalyticsService {
-  private readonly FUEL_TANK_CAPACITY_LITERS = 60;
-
+  /**
+   * Generates a fuel analytics report for a given IMEI over a specified date range,
+   * grouped by day, week, or month.
+   *
+   * @param imei The IMEI of the device.
+   * @param startDate The start date for the report.
+   * @param endDate The end date for the report.
+   * @param type The grouping type for the chart (daily, weekly, monthly).
+   * @returns A Map where keys are date labels (e.g., "YYYY-MM-DD") and values are FuelSummary objects.
+   */
   async getFuelAnalyticsReport(
     imei: string,
     startDate: Date,
     endDate: Date,
     type: ChartGroupingType
-  ): Promise<Map<string, FuelSummary>> {
-    
-    const tsKey = `state.reported.ts`;
-    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
-    const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
-    const ignitionKey = `state.reported.${AVL_ID_MAP.IGNITION}`;
+  ): Promise<Map<string, any>> {
+    const fuelLevelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`; // AVL ID 48: Fuel Level (percentage or raw value)
+    const totalOdometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`; // AVL ID 16: Total Odometer (km)
+    const distanceSinceCodesClearKey = `state.reported.${AVL_ID_MAP.DISTANCE_SINCE_CODES_CLEAR}`; // AVL ID 49
+    const fuelTypeKey = `state.reported.${AVL_ID_MAP.FUEL_TYPE}`; // AVL ID 759
+    const tsKey = `state.reported.ts`; // Timestamp in milliseconds
 
     let groupByFormat: string;
     switch (type) {
-      case "weekly": groupByFormat = "%Y-%U"; break;
-      case "monthly": groupByFormat = "%Y-%m"; break;
+      case "weekly":
+        groupByFormat = "%Y-%U"; // Year and week number
+        break;
+      case "monthly":
+        groupByFormat = "%Y-%m"; // Year and month
+        break;
       case "daily":
-      default: groupByFormat = "%Y-%m-%d"; break;
+      default:
+        groupByFormat = "%Y-%m-%d"; // Year, month, and day
+        break;
     }
 
     const pipeline: any[] = [
       {
+        // Stage 1: Filter telemetry data by IMEI and timestamp range.
+        // Ensure fuel level data exists and is a number.
         $match: {
           imei,
           [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
-          [fuelKey]: { $exists: true, $type: "number", $gte: 0, $lte: 100 },
-          [odometerKey]: { $exists: true, $type: "number" },
+          [fuelLevelKey]: { $exists: true, $type: "number" },
         },
       },
-
-      { $sort: { [tsKey]: 1 } },
-
       {
+        // Stage 2: Sort by timestamp to correctly get $first and $last values in the group.
+        $sort: { [tsKey]: 1 },
+      },
+      {
+        // Stage 3: Group data based on the specified chart grouping type.
+        // Calculate min, max, average, first, and last fuel levels, and total distance.
         $group: {
           _id: {
-            day: {
-              $dateToString: {
-                format: groupByFormat,
-                date: { $toDate: `$${tsKey}` },
-                timezone: "UTC"
-              }
-            }
+            $dateToString: {
+              format: groupByFormat,
+              date: { $toDate: `$${tsKey}` },
+              timezone: "UTC", // Use UTC to avoid timezone issues with grouping
+            },
           },
-          
-          dayStartFuelPercent: { $first: `$${fuelKey}` },
-          dayEndFuelPercent: { $last: `$${fuelKey}` },
-          dayStartOdometer: { $first: `$${odometerKey}` },
-          dayEndOdometer: { $last: `$${odometerKey}` },
-          currentFuelLevel: { $last: `$${fuelKey}` },
-          currentIgnitionStatus: { $last: `$${ignitionKey}` },
-          lastUpdateTime: { $last: `$${tsKey}` },
-          minFuelPercent: { $min: `$${fuelKey}` },
-          maxFuelPercent: { $max: `$${fuelKey}` },
-          readingCount: { $sum: 1 }
-        }
+          firstFuelLevel: { $first: `$${fuelLevelKey}` }, // First fuel level reading in the group
+          lastFuelLevel: { $last: `$${fuelLevelKey}` }, // Last fuel level reading in the group
+          minFuelLevel: { $min: `$${fuelLevelKey}` }, // Minimum fuel level in the group
+          maxFuelLevel: { $max: `$${fuelLevelKey}` }, // Maximum fuel level in the group
+          averageFuelLevel: { $avg: `$${fuelLevelKey}` }, // Average fuel level in the group
+          // For consumption, we need the first and last odometer readings within the group.
+          // Note: This is a simplified approach. A more robust solution might need to track
+          // fuel level changes more granularly against distance travelled for true consumption.
+          firstOdometer: { $first: `$${totalOdometerKey}` },
+          lastOdometer: { $last: `$${totalOdometerKey}` },
+          fuelType: { $last: `$${fuelTypeKey}` }, // Assuming fuel type doesn't change frequently within a group
+          count: { $sum: 1 }, // Count of documents in each group
+        },
       },
-
       {
-        $addFields: {
-          dayStartFuelLiters: {
-            $multiply: ["$dayStartFuelPercent", { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          dayEndFuelLiters: {
-            $multiply: ["$dayEndFuelPercent", { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          currentFuelLiters: {
-            $multiply: ["$currentFuelLevel", { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          
-          dailyDistanceKm: {
-            $divide: [
-              { $subtract: ["$dayEndOdometer", "$dayStartOdometer"] },
-              1000
-            ]
-          },
-          
-          refuelAmount: {
-            $cond: {
-              if: {
-                $gt: [
-                  { $subtract: ["$maxFuelPercent", "$minFuelPercent"] },
-                  8
-                ]
-              },
-              then: {
-                $multiply: [
-                  { $subtract: ["$maxFuelPercent", "$minFuelPercent"] },
-                  { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }
-                ]
-              },
-              else: 0
-            }
-          }
-        }
-      },
-
-      {
-        $addFields: {
-          actualFuelConsumed: {
-            $cond: {
-              if: { $gt: ["$refuelAmount", 0] },
-              then: {
-                $add: [
-                  { $subtract: ["$dayStartFuelLiters", "$dayEndFuelLiters"] },
-                  "$refuelAmount"
-                ]
-              },
-              else: {
-                $max: [0, { $subtract: ["$dayStartFuelLiters", "$dayEndFuelLiters"] }]
-              }
-            }
-          },
-          
-          estimatedFuelUsed: {
-            $cond: {
-              if: { $gt: ["$dailyDistanceKm", 0] },
-              then: { $multiply: ["$dailyDistanceKm", 0.10] },
-              else: 0
-            }
-          },
-          
-          fuelEfficiencyKmL: {
-            $cond: {
-              if: {
-                $and: [
-                  { $gt: ["$dailyDistanceKm", 1] },
-                  { $gt: ["$actualFuelConsumed", 0] }
-                ]
-              },
-              then: { $divide: ["$dailyDistanceKm", "$actualFuelConsumed"] },
-              else: 0
-            }
-          },
-          
-          fuelEfficiencyL100km: {
-            $cond: {
-              if: {
-                $and: [
-                  { $gt: ["$dailyDistanceKm", 1] },
-                  { $gt: ["$actualFuelConsumed", 0] }
-                ]
-              },
-              then: {
-                $multiply: [
-                  { $divide: ["$actualFuelConsumed", "$dailyDistanceKm"] },
-                  100
-                ]
-              },
-              else: 0
-            }
-          }
-        }
-      },
-
-      {
+        // Stage 4: Project the grouped results into the desired FuelSummary format.
+        // Calculate fuel consumption and related metrics.
         $project: {
-          _id: 0,
-          date: "$_id.day",
-          startingFuelPercent: { $round: ["$dayStartFuelPercent", 1] },
-          endingFuelPercent: { $round: ["$dayEndFuelPercent", 1] },
-          currentFuelLevel: { $round: ["$currentFuelLevel", 1] },
-          startingFuelLiters: { $round: ["$dayStartFuelLiters", 1] },
-          endingFuelLiters: { $round: ["$dayEndFuelLiters", 1] },
-          currentFuelLiters: { $round: ["$currentFuelLiters", 1] },
-          totalFuelConsumedLiters: { $round: ["$actualFuelConsumed", 2] },
-          estimatedFuelUsed: { $round: ["$estimatedFuelUsed", 2] },
-          totalFuelRefueledLiters: { $round: ["$refuelAmount", 2] },
-          totalDistanceKm: { $round: ["$dailyDistanceKm", 2] },
-          mileageKmL: { $round: ["$fuelEfficiencyKmL", 2] },
-          fuelEfficiencyL100km: { $round: ["$fuelEfficiencyL100km", 2] },
-          currentIgnitionStatus: "$currentIgnitionStatus",
-          ignitionStatusText: {
-            $cond: {
-              if: { $eq: ["$currentIgnitionStatus", 1] },
-              then: "ON",
-              else: "OFF"
-            }
-          },
-          refuelOccurred: { $gt: ["$refuelAmount", 0] },
-          lastUpdateTime: "$lastUpdateTime",
-          dataQuality: "$readingCount"
-        }
-      },
+          _id: 0, // Exclude the default _id field
+          label: "$_id", // Rename _id to label for the report map key
+          firstFuelLevel: "$firstFuelLevel",
+          lastFuelLevel: "$lastFuelLevel",
+          minFuelLevel: "$minFuelLevel",
+          maxFuelLevel: "$maxFuelLevel",
+          averageFuelLevel: { $round: ["$averageFuelLevel", 2] }, // Round average fuel level
 
-      { $sort: { date: 1 } }
+          // Calculate distance traveled within the period
+          distanceTraveled: {
+            $max: [0, { $subtract: ["$lastOdometer", "$firstOdometer"] }],
+          },
+          fuelType: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$fuelType", 0] }, then: "Petrol" },
+                { case: { $eq: ["$fuelType", 1] }, then: "Diesel" },
+                { case: { $eq: ["$fuelType", 2] }, then: "LPG" },
+                { case: { $eq: ["$fuelType", 3] }, then: "CNG" },
+                { case: { $eq: ["$fuelType", 4] }, then: "Electric" },
+              ],
+              default: "Unknown",
+            },
+          },
+          hasData: { $gt: ["$count", 0] }, // Indicate if the group has any data
+        },
+      },
+      {
+        // Stage 5: Sort the final results by label (date) for chronological order.
+        $sort: { label: 1 },
+      },
     ];
 
     const results = await Telemetry.aggregate(pipeline);
+    const reportMap = new Map<string, any>();
 
-    const reportMap = new Map<string, FuelSummary>();
     results.forEach((point) => {
-      reportMap.set(point.date, {
-        startingFuelPercent: point.startingFuelPercent || 0,
-        endingFuelPercent: point.endingFuelPercent || 0,
-        currentFuelLevel: point.currentFuelLevel || 0,
-        currentFuelLiters: point.currentFuelLiters || 0,
-        startingFuelLiters: point.startingFuelLiters || 0,
-        endingFuelLiters: point.endingFuelLiters || 0,
-        totalFuelConsumedLiters: point.totalFuelConsumedLiters || 0,
-        estimatedFuelUsed: point.estimatedFuelUsed || 0,
-        totalFuelRefueledLiters: point.totalFuelRefueledLiters || 0,
-        totalDistanceKm: point.totalDistanceKm || 0,
-        mileageKmL: point.mileageKmL || 0,
-        fuelEfficiencyL100km: point.fuelEfficiencyL100km || 0,
-        currentIgnitionStatus: point.currentIgnitionStatus || 0,
-        ignitionStatusText: point.ignitionStatusText || "OFF",
-        refuelOccurred: point.refuelOccurred || false,
-        lastUpdateTime: point.lastUpdateTime,
-        dataQuality: point.dataQuality
+      // Calculate fuel consumption (very rough, as actual consumption requires more data points like fill-ups)
+      // For simplicity, we can assume change in percentage / distance.
+      // A more accurate calculation needs actual fuel dispensed or fuel flow rate.
+      const fuelLevelChange = point.firstFuelLevel - point.lastFuelLevel; // Negative means consumed
+      const distance = point.distanceTraveled;
+      let fuelConsumptionRate = 0; // Units: % per km
+      if (distance > 0 && fuelLevelChange > 0) {
+        fuelConsumptionRate = fuelLevelChange / distance;
+      }
+
+      reportMap.set(point.label, {
+        date: point.label,
+        firstFuelLevel: parseFloat(point.firstFuelLevel?.toFixed(1) ?? "0"),
+        lastFuelLevel: parseFloat(point.lastFuelLevel?.toFixed(1) ?? "0"),
+        minFuelLevel: parseFloat(point.minFuelLevel?.toFixed(1) ?? "0"),
+        maxFuelLevel: parseFloat(point.maxFuelLevel?.toFixed(1) ?? "0"),
+        averageFuelLevel: parseFloat(point.averageFuelLevel?.toFixed(1) ?? "0"),
+        distanceTraveled: parseFloat(distance?.toFixed(1) ?? "0"),
+        fuelConsumptionRate: parseFloat(fuelConsumptionRate?.toFixed(3) ?? "0"), // %/km
+        fuelType: point.fuelType,
+        fuelLevelStatus: this.getFuelLevelStatus(point.lastFuelLevel),
+        hasData: point.hasData,
       });
     });
 
     return reportMap;
   }
 
-  async getDailyFuelBarChartData(
-    imei: string,
-    startDate: Date,
-    endDate: Date,
-    type: ChartGroupingType
-  ): Promise<Map<string, DailyFuelBarChartData>> {
-    
+  /**
+   * Fetches the current fuel status for a given IMEI.
+   * Retrieves the latest telemetry data and calculates fuel-related metrics.
+   *
+   * @param imei The IMEI of the device.
+   * @returns A CurrentFuelStatus object if data is found, otherwise null.
+   */
+  async getCurrentFuelStatus(imei: string): Promise<any | null> {
     const tsKey = `state.reported.ts`;
-    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
-    const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
+    const fuelLevelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
+    const totalOdometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
+    const fuelTypeKey = `state.reported.${AVL_ID_MAP.FUEL_TYPE}`;
 
-    let groupByFormat: string;
-    switch (type) {
-      case "weekly": groupByFormat = "%Y-%U"; break;
-      case "monthly": groupByFormat = "%Y-%m"; break;
-      case "daily":
-      default: groupByFormat = "%Y-%m-%d"; break;
+    // Find the latest telemetry record for the given IMEI that has fuel level data.
+    const latest = await Telemetry.findOne({
+      imei,
+      [fuelLevelKey]: { $exists: true },
+    })
+      .sort({ [tsKey]: -1 }) // Sort by timestamp in descending order to get the latest
+      .select({
+        // Select only the necessary fields
+        [tsKey]: 1,
+        [fuelLevelKey]: 1,
+        [totalOdometerKey]: 1,
+        [fuelTypeKey]: 1,
+      })
+      .lean()
+      .exec();
+
+    // If no telemetry data or reported state is found, return null.
+    if (!latest || !latest.state?.reported) {
+      return null;
     }
 
-    const pipeline: any[] = [
-      {
-        $match: {
-          imei,
-          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
-          [fuelKey]: { $exists: true, $type: "number", $gte: 0, $lte: 100 },
-          [odometerKey]: { $exists: true, $type: "number" },
-        },
-      },
+    const reported = latest.state.reported;
+    const currentFuelLevel = reported[AVL_ID_MAP.FUEL_LEVEL] || 0; // Assuming this is a percentage (0-100)
+    const currentOdometer = reported[AVL_ID_MAP.TOTAL_ODOMETER] || 0;
+    const fuelTypeRaw = reported[AVL_ID_MAP.FUEL_TYPE];
 
-      { $sort: { [tsKey]: 1 } },
+    const fuelType = this.mapFuelType(fuelTypeRaw);
+    const fuelLevelStatus = this.getFuelLevelStatus(currentFuelLevel);
+    const estimatedRange = this.estimateRange(currentFuelLevel); // This will be a simple estimate
 
-      {
-        $group: {
-          _id: {
-            period: {
-              $dateToString: {
-                format: groupByFormat,
-                date: { $toDate: `$${tsKey}` },
-                timezone: "UTC"
-              }
-            },
-            dayOfWeek: {
-              $dayOfWeek: { $toDate: `$${tsKey}` }
-            }
-          },
-          
-          dayStartFuelPercent: { $first: `$${fuelKey}` },
-          dayEndFuelPercent: { $last: `$${fuelKey}` },
-          minFuelPercent: { $min: `$${fuelKey}` },
-          maxFuelPercent: { $max: `$${fuelKey}` },
-          dayStartOdometer: { $first: `$${odometerKey}` },
-          dayEndOdometer: { $last: `$${odometerKey}` },
-          readingCount: { $sum: 1 }
-        }
-      },
+    // Return the calculated current fuel status.
+    return {
+      timestamp: reported.ts || Date.now(),
+      currentFuelLevel: parseFloat(currentFuelLevel.toFixed(1)),
+      fuelLevelUnit: "%", // Assuming percentage
+      fuelLevelStatus: fuelLevelStatus,
+      totalOdometer: currentOdometer,
+      totalOdometerUnit: "km",
+      fuelType: fuelType,
+      estimatedRange: parseFloat(estimatedRange.toFixed(1)),
+      estimatedRangeUnit: "km",
+    };
+  }
 
-      {
-        $addFields: {
-          dayName: {
-            $switch: {
-              branches: [
-                { case: { $eq: ["$_id.dayOfWeek", 1] }, then: "Sunday" },
-                { case: { $eq: ["$_id.dayOfWeek", 2] }, then: "Monday" },
-                { case: { $eq: ["$_id.dayOfWeek", 3] }, then: "Tuesday" },
-                { case: { $eq: ["$_id.dayOfWeek", 4] }, then: "Wednesday" },
-                { case: { $eq: ["$_id.dayOfWeek", 5] }, then: "Thursday" },
-                { case: { $eq: ["$_id.dayOfWeek", 6] }, then: "Friday" },
-                { case: { $eq: ["$_id.dayOfWeek", 7] }, then: "Saturday" }
-              ],
-              default: "Unknown"
-            }
-          },
-          
-          dayStartFuelLiters: {
-            $multiply: ["$dayStartFuelPercent", { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          dayEndFuelLiters: {
-            $multiply: ["$dayEndFuelPercent", { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          minFuelLiters: {
-            $multiply: ["$minFuelPercent", { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          maxFuelLiters: {
-            $multiply: ["$maxFuelPercent", { $divide: [this.FUEL_TANK_CAPACITY_LITERS, 100] }]
-          }
-        }
-      },
+  /**
+   * Determines the status of the fuel level (e.g., "Good", "Low", "Critical").
+   * @param fuelLevel The current fuel level, assumed to be a percentage (0-100).
+   * @returns A string indicating the fuel level status.
+   */
+  private getFuelLevelStatus(fuelLevel: number): string {
+    if (fuelLevel >= 75) return "Full";
+    if (fuelLevel >= 30) return "Good";
+    if (fuelLevel >= 10) return "Low";
+    return "Critical";
+  }
 
-      {
-        $addFields: {
-          refuelAmount: {
-            $cond: {
-              if: {
-                $gt: [
-                  { $subtract: ["$maxFuelPercent", "$minFuelPercent"] },
-                  8
-                ]
-              },
-              then: { $subtract: ["$maxFuelLiters", "$minFuelLiters"] },
-              else: 0
-            }
-          },
-          
-          netFuelChange: {
-            $subtract: ["$dayEndFuelLiters", "$dayStartFuelLiters"]
-          }
-        }
-      },
+  /**
+   * Estimates the remaining driving range based on the current fuel level.
+   * This is a very generalized estimate and would need vehicle-specific
+   * fuel efficiency (e.g., L/100km or MPG) for accuracy.
+   * Assuming a full tank gives roughly 500km range for a typical car.
+   * @param fuelLevel The current fuel level as a percentage (0-100).
+   * @returns The estimated remaining range in kilometers.
+   */
+  private estimateRange(fuelLevel: number): number {
+    const fullTankRange = 500; // km, a generalized assumption
+    return (fuelLevel / 100) * fullTankRange;
+  }
 
-      {
-        $addFields: {
-          totalFuelConsumedLiters: {
-            $cond: {
-              if: { $gt: ["$refuelAmount", 0] },
-              then: {
-                $subtract: ["$refuelAmount", "$netFuelChange"]
-              },
-              else: {
-                $max: [0, { $subtract: ["$dayStartFuelLiters", "$dayEndFuelLiters"] }]
-              }
-            }
-          },
-          
-          totalFuelRefueledLiters: "$refuelAmount"
-        }
-      },
-
-      {
-        $project: {
-          _id: 0,
-          label: "$_id.period",
-          dayName: 1,
-          dayOfWeek: "$_id.dayOfWeek",
-          totalFuelConsumedLiters: { $round: ["$totalFuelConsumedLiters", 2] },
-          totalFuelRefueledLiters: { $round: ["$totalFuelRefueledLiters", 2] },
-          hasData: { $gt: ["$readingCount", 10] }
-        }
-      },
-
-      { $sort: { label: 1 } }
-    ];
-
-    const results = await Telemetry.aggregate(pipeline);
-
-    const dbDataMap = new Map<string, any>();
-    results.forEach((point) => {
-      dbDataMap.set(point.label, point);
-    });
-
-    const reportMap = new Map<string, DailyFuelBarChartData>();
-    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    
-    const today = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - i);
-      
-      const dateString = date.toISOString().split('T')[0]!;
-      const dayOfWeek = date.getDay();
-      const dayName = dayNames[dayOfWeek]!;
-      
-      const dbData = dbDataMap.get(dateString);
-      
-      if (dbData) {
-        reportMap.set(dateString, {
-          date: dateString,
-          dayName: dayName,
-          dayOfWeek: dayOfWeek + 1,
-          chartLabel: `${dayName}`,
-          totalFuelConsumedLiters: dbData.totalFuelConsumedLiters || 0,
-          totalFuelRefueledLiters: dbData.totalFuelRefueledLiters || 0,
-          hasData: dbData.hasData || false
-        });
-      } else {
-        reportMap.set(dateString, {
-          date: dateString,
-          dayName: dayName,
-          dayOfWeek: dayOfWeek + 1,
-          chartLabel: `${dayName}`,
-          totalFuelConsumedLiters: 0,
-          totalFuelRefueledLiters: 0,
-          hasData: false
-        });
-      }
+  /**
+   * Maps the numerical fuel type AVL ID to a human-readable string.
+   * @param fuelTypeRaw The raw fuel type ID from AVL_ID_MAP.FUEL_TYPE.
+   * @returns A string representing the fuel type.
+   */
+  private mapFuelType(fuelTypeRaw: number | undefined): string {
+    switch (fuelTypeRaw) {
+      case 0:
+        return "Petrol";
+      case 1:
+        return "Diesel";
+      case 2:
+        return "LPG";
+      case 3:
+        return "CNG";
+      case 4:
+        return "Electric";
+      default:
+        return "Unknown";
     }
-
-    return reportMap;
   }
 }
