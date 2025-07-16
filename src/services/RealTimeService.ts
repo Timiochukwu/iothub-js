@@ -907,16 +907,7 @@ export class RealTimeService {
             user: device.user,
             type: "working_hour_alert",
             message,
-            data: {
-              imei,
-              timestamp: currentTime,
-              location: {
-                lat,
-                lng,
-              },
-              speed: payload.state.reported[AVL_ID_MAP["SPEED"]],
-              engineStatus: payload.state.reported[AVL_ID_MAP["ENGINE_STATUS"]],
-            },
+            data: mapTelemetry(payload.state.reported),
           };
           await Notification.create(notification);
         }
