@@ -4,7 +4,7 @@ import { Server as HTTPServer } from "http";
 import jwt from "jsonwebtoken";
 import { GeofenceService } from "./GeofenceService";
 import { IGeofence } from "../models/Geofence";
-import { Notification from "../models/Notification";}
+import { Notification } from "../models/Notification";
 import { User } from "../models/User";
 
 export interface AuthenticatedSocket extends Socket {
@@ -331,7 +331,7 @@ export class WebSocketService {
         timestamp: location.timestamp,
       };
 
-      // get user date 
+      // get user date
       const user = await User.findOne({ email: geofence.userEmail });
       if (!user) {
         console.error(`User not found for geofence ${geofence._id}`);
@@ -340,25 +340,25 @@ export class WebSocketService {
 
       // if (type === "entry") {
       const message = `Device ${location.imei} ${type === "entry" ? "entered" : "exited"} geofence ${geofence.name}`;
-        Notification.create({
-          user: user._id,
-          data: {
-            geofence: {
-              id: geofence._id.toString(),
-              name: geofence.name,
-              type: geofence.type,
-              color: geofence.color,
-            },
-            location: {
-              lat: location.lat,
-              lng: location.lng,
-            },
+      Notification.create({
+        user: user._id,
+        data: {
+          geofence: {
+            id: geofence._id.toString(),
+            name: geofence.name,
+            type: geofence.type,
+            color: geofence.color,
           },
-          message,
-          type: "geofence_alert",
-          read: false,
-          timestamp: location.timestamp,
-        });
+          location: {
+            lat: location.lat,
+            lng: location.lng,
+          },
+        },
+        message,
+        type: "geofence_alert",
+        read: false,
+        timestamp: location.timestamp,
+      });
       // }
 
       // Emit to device room
