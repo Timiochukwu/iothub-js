@@ -363,7 +363,8 @@ export class SpeedAnalyticsService {
     let groupByFormat: string;
     switch (type) {
       case "weekly":
-        groupByFormat = "%Y-%U"; // Year and week number
+        groupByFormat = "%Y-%m-%d"; // Year, month, and day
+        // groupByFormat = "%Y-%U"; // Year and week number
         break;
       case "monthly":
         groupByFormat = "%Y-%m"; // Year and month
@@ -373,6 +374,8 @@ export class SpeedAnalyticsService {
         groupByFormat = "%Y-%m-%d"; // Year, month, and day
         break;
     }
+
+    console.log("groupByFormat", groupByFormat);
 
     const pipeline: any[] = [
       {
@@ -472,7 +475,8 @@ export class SpeedAnalyticsService {
         const weekNumber = Math.ceil(
           ((dateForWeek.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
         );
-        dateLabel = `${year}-${String(weekNumber).padStart(2, "0")}`;
+        // dateLabel = `${year}-${String(weekNumber).padStart(2, "0")}`;
+        dateLabel = currentIterDate.toISOString().split("T")[0]!;
       } else {
         // monthly
         dateLabel = currentIterDate.toISOString().substring(0, 7); // YYYY-MM
