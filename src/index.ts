@@ -15,14 +15,13 @@ import realtimeRoutes, {
   initializeRealTimeRoutes,
 } from "./routes/realtimeRoutes";
 import { RealTimeService } from "./services/RealTimeService";
-import { GeofenceService } from './services/GeofenceService';
+import { GeofenceService } from "./services/GeofenceService";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./config/swagger";
 import geofenceRoutes from "./routes/geofenceRoutes";
 import { collisionRoutes } from "./routes/collisionRoutes";
 import { notificationRouter } from "./routes/notificationRoutes";
 import workingHoursRouter from "./routes/workingHoursRouter";
-
 
 import coreTelemetryRoutes from "./routes/coreTelemetryRoutes";
 import combinedAnalyticsRoutes from "./routes/combinedAnalyticsRoutes";
@@ -32,10 +31,9 @@ import tirePressureRoutes from "./routes/tirePressureRoutes";
 import drivingBehaviorRoutes from "./routes/drivingBehaviorRoutes";
 import batteryAnalyticsRoutes from "./routes/batteryAnalyticsRoutes";
 import speedAlertRoutes from "./routes/speedAlertRoutes";
-
+import speedAnalyticsRoutes from "./routes/speedAnalyticsRoutes";
 
 import serviceAlertsRoutes from "./routes/serviceAlertsRoutes";
-
 
 import path from "path";
 
@@ -48,7 +46,6 @@ const httpServer = createServer(app);
 // Initialize real-time service
 const realTimeService = new RealTimeService(httpServer);
 const geofenceService = new GeofenceService(realTimeService);
-
 
 (realTimeService as any).setGeofenceService?.(geofenceService);
 // Initialize real-time routes with service instance
@@ -159,9 +156,9 @@ apiRouter.use("/engine", engineHealthRoutes);
 apiRouter.use("/tire-pressure", tirePressureRoutes);
 apiRouter.use("/driving", drivingBehaviorRoutes);
 apiRouter.use("/battery", batteryAnalyticsRoutes);
-apiRouter.use("/speed", speedAlertRoutes);
+// apiRouter.use("/speed", speedAlertRoutes);
+apiRouter.use("/speed", speedAnalyticsRoutes);
 apiRouter.use("/service-alerts", serviceAlertsRoutes);
-
 
 // Mount the entire API logic on the '/api' path.
 app.use("/api", apiRouter);

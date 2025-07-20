@@ -1,5 +1,5 @@
-export * from './AnalyticsDTO';
-export * from './TelemetryDTO';
+export * from "./AnalyticsDTO";
+export * from "./TelemetryDTO";
 
 export type ChartGroupingType = "daily" | "weekly" | "monthly";
 
@@ -47,21 +47,54 @@ export interface BatterySummary {
   minVoltage: number;
   maxVoltage: number;
   averageVoltage: number;
-  
+
   // Enhanced data for UI
-  overallVoltage: number;        // Current voltage
-  normalRangeMin: number;        // 12.4V
-  normalRangeMax: number;        // 13.6V
-  temperature: number;           // Operating temperature
-  temperatureStatus: string;     // "Operating Normally" / "High" / "Low"
-  soh: number;                   // State of Health percentage
-  sohStatus: string;             // "still performing well" / etc
-  estimatedLife: number;         // Hours until next charge
-  estimatedLifeUnit: string;     // "hrs"
-  current: number;               // Current in Amps
-  currentStatus: string;         // "charging currently" / "discharging" / "idle"
-  isCharging: boolean;           // true/false
-  batteryHealth: string;         // "Excellent" / "Good" / "Fair" / "Poor"
+  overallVoltage: number; // Current voltage
+  normalRangeMin: number; // 12.4V
+  normalRangeMax: number; // 13.6V
+  temperature: number; // Operating temperature
+  temperatureStatus: string; // "Operating Normally" / "High" / "Low"
+  soh: number; // State of Health percentage
+  sohStatus: string; // "still performing well" / etc
+  estimatedLife: number; // Hours until next charge
+  estimatedLifeUnit: string; // "hrs"
+  current: number; // Current in Amps
+  currentStatus: string; // "charging currently" / "discharging" / "idle"
+  isCharging: boolean; // true/false
+  batteryHealth: string; // "Excellent" / "Good" / "Fair" / "Poor"
+}
+
+export interface CurrentSpeedData {
+  imei: string;
+  lastUpdateTimestamp: number;
+  // Fuel Mileage section
+  avgMileage: number; // km/L
+  lastTripMileage: number; // km/L
+  // May Details section (or current details)
+  distanceToday: number; // km
+  drivingTimeToday: number; // minutes
+  avgSpeedToday: number; // km/h
+  maxSpeedToday: number; // km/h
+  avgRpmToday: number; // rpm
+  speedingIncidentsToday: number; // count
+  speedingDistanceToday: number; // km
+  rapidAccelerationIncidentsToday: number; // count
+  rapidDecelerationIncidentsToday: number; // count
+  // Status
+  deviceStatus: "Active" | "Inactive" | "Unknown";
+}
+
+export interface SpeedReportEntry {
+  dateLabel: string; // "YYYY-MM-DD", "YYYY-WUU", "YYYY-MM"
+  totalDistance: number; // km
+  totalDrivingTime: number; // minutes
+  totalDrivingTimeUnit: string; // "minutes", "hours"
+  averageSpeed: number; // km/h
+  maxSpeed: number; // km/h
+  speedingIncidents: number;
+  rapidAccelerationIncidents: number;
+  rapidDecelerationIncidents: number;
+  hasData: boolean;
 }
 
 export interface FuelSummary {
@@ -171,13 +204,13 @@ export interface SpeedAlertConfig {
 }
 
 export interface SpeedViolation {
-  type: 'SPEEDING' | 'RAPID_ACCELERATION' | 'RAPID_DECELERATION';
+  type: "SPEEDING" | "RAPID_ACCELERATION" | "RAPID_DECELERATION";
   timestamp: number;
   duration: number; // seconds
   maxSpeed: number;
   speedLimit: number;
   location: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 }
 
 export interface DailySpeedReport {
@@ -360,13 +393,13 @@ export interface TelemetryData {
   totalMileage?: number;
   engineStatus?: "ON" | "OFF";
   // Enhanced battery information
-  batteryTemperature?: number;    // Temperature in Celsius
-  batteryHealthSoh?: number;     // State of Health percentage
+  batteryTemperature?: number; // Temperature in Celsius
+  batteryHealthSoh?: number; // State of Health percentage
   batteryEstimatedLife?: number; // Estimated life in hours
-  batteryCurrent?: number;       // Current in Amperes
-  batteryVoltage?: number;       // Voltage in Volts
-  batteryVoltageMin?: number;    // Minimum voltage in range
-  batteryVoltageMax?: number;    // Maximum voltage in range
+  batteryCurrent?: number; // Current in Amperes
+  batteryVoltage?: number; // Voltage in Volts
+  batteryVoltageMin?: number; // Minimum voltage in range
+  batteryVoltageMax?: number; // Maximum voltage in range
 }
 
 export interface TelemetryPayload {
@@ -455,25 +488,25 @@ export interface ComprehensiveBatteryDTO {
   timestamp: number;
   formattedTimestamp: string;
   message: string;
-  
+
   // Basic battery info
-  battery?: number | null;           // Legacy battery field
-  externalVoltage?: number | null;   // External voltage
-  
+  battery?: number | null; // Legacy battery field
+  externalVoltage?: number | null; // External voltage
+
   // Enhanced battery information
-  temperature?: number | null;        // Temperature in Celsius
-  healthSoh?: number | null;         // State of Health percentage (0-100)
-  estimatedLife?: number | null;     // Estimated life in hours (e.g., 12.5)
-  current?: number | null;           // Current in Amperes (e.g., 4.2A)
-  voltage?: number | null;           // Voltage in Volts (e.g., 13.9V)
-  voltageMin?: number | null;        // Minimum voltage in range
-  voltageMax?: number | null;        // Maximum voltage in range
-  
+  temperature?: number | null; // Temperature in Celsius
+  healthSoh?: number | null; // State of Health percentage (0-100)
+  estimatedLife?: number | null; // Estimated life in hours (e.g., 12.5)
+  current?: number | null; // Current in Amperes (e.g., 4.2A)
+  voltage?: number | null; // Voltage in Volts (e.g., 13.9V)
+  voltageMin?: number | null; // Minimum voltage in range
+  voltageMax?: number | null; // Maximum voltage in range
+
   // Calculated fields
-  batteryHealth: string;             // "Good", "Fair", "Poor", "Critical"
-  voltageRange: string;              // "Normal", "Low", "High"
-  temperatureStatus: string;         // "Normal", "Hot", "Cold"
-  estimatedLifeText: string;         // "12.5 hours", "Unknown"
+  batteryHealth: string; // "Good", "Fair", "Poor", "Critical"
+  voltageRange: string; // "Normal", "Low", "High"
+  temperatureStatus: string; // "Normal", "Hot", "Cold"
+  estimatedLifeText: string; // "12.5 hours", "Unknown"
 }
 
 export interface FuelLevelDTO {
@@ -505,7 +538,7 @@ export interface CrashDetectionDTO {
   crashDetection: number | null;
   timestamp: number;
   message: string;
-  severity: 'none' | 'minor' | 'moderate' | 'severe';
+  severity: "none" | "minor" | "moderate" | "severe";
   formattedTimestamp: string;
   requiresAction: boolean;
 }
