@@ -56,7 +56,7 @@ export class SpeedAnalyticsController {
     const imei = req.params?.imei as string;
     let startDateParam = req.query?.startDate as string | undefined;
     let endDateParam = req.query?.endDate as string | undefined;
-    let chartType = req.query?.groupingType as ChartGroupingType | undefined;
+    let chartType = req.query?.chartType as ChartGroupingType | undefined;
 
     if (!imei) {
       res.status(400).json({ error: "IMEI is required" });
