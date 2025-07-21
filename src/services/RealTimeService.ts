@@ -1041,6 +1041,7 @@ export class RealTimeService {
         user: device.user,
         type: "collision_alert",
         message,
+        data: currentPoint,
       };
       await Notification.create(notification);
 
