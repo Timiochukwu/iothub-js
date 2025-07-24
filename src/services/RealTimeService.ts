@@ -1,7 +1,7 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
 import { Server as HTTPServer } from "http";
 import * as jwt from "jsonwebtoken";
-// import { CollisionAlert } from "./CollisionDetectionService";
+import { CollisionAlert, CollisionAlertSettings } from "../models/Collision";
 import { TelemetryService } from "./TelemetryService";
 import { Telemetry, ITelemetry } from "../models/Telemetry";
 import { Device } from "../models/Device";
@@ -923,6 +923,19 @@ export class RealTimeService {
       return;
     }
 
+    // get collision alert status
+    const collisionAlertSettingsData = await CollisionAlertSettings.findOne({
+      device: device._id,
+      status: true,
+    }).lean();
+
+    // if (!collisionAlertSettingsData) {
+    //   console.log(
+    //     `Collision alert is not active for device ${imei}. Skipping collision detection.`
+    //   );
+    //   return false;
+    // }
+
     const recentTelemetry = await Telemetry.find({ imei })
       .sort({ "state.reported.ts": -1 })
       .limit(2)
@@ -1022,20 +1035,20 @@ export class RealTimeService {
         `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
         `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`;
       // 4. FIX: Use the ICollisionAlert interface for type safety
-      // const collisionAlert = {
-      //   device: device._id.toString(), // _id is available on the lean object
-      //   timestamp: now,
-      //   location: { lat, lng },
-      //   message:
-      //     `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
-      //     `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`,
-      //   // 5. FIX: Pass the plain object `currentPoint` to your mapping function
-      //   data: currentPoint,
-      //   speed: currentSpeed,
-      //   rpm: currentPoint[AVL_ID_MAP.RPM] || 0,
-      // };
+      const collisionAlertData = {
+        device: device._id.toString(), // _id is available on the lean object
+        timestamp: now,
+        location: { lat, lng },
+        message:
+          `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
+          `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`,
+        // 5. FIX: Pass the plain object `currentPoint` to your mapping function
+        data: currentPoint,
+        speed: currentSpeed,
+        rpm: currentPoint[AVL_ID_MAP.RPM] || 0,
+      };
 
-      // await CollisionAlert.create(collisionAlert);
+      await CollisionAlert.create(collisionAlertData);
 
       const notification = {
         user: device.user,
