@@ -92,7 +92,7 @@ export const toggleCollisionStatus = async (req: Request, res: Response) => {
 
     let collisionAlert = await CollisionAlertSettings.findOne({
       device: deviceId,
-      user: userId,
+      // user: userId,
     });
 
     if (!collisionAlert) {
