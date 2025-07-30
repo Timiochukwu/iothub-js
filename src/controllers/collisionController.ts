@@ -90,6 +90,16 @@ export const toggleCollisionStatus = async (req: Request, res: Response) => {
     const { deviceId } = req.params;
     const userId = (req as any).user.userId;
 
+    // check user owns device
+    const device = await Device.findOne({ _id: deviceId, user: userId });
+    if (!device) {
+      res.status(403).json({
+        success: false,
+        message: `Access denied to device ${deviceId}`,
+      });
+      return;
+    }
+
     let collisionAlert = await CollisionAlertSettings.findOne({
       device: deviceId,
       // user: userId,
