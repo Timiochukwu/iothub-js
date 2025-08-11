@@ -17,7 +17,18 @@ const CollisionAlertSchema = new mongoose.Schema({
   },
 });
 
+const CollisionAlertSettingsSchema = new mongoose.Schema({
+  device: { type: Types.ObjectId, ref: "Device", required: true },
+  timestamp: { type: Date, required: true },
+  status: { type: Boolean, default: true },
+});
+
 export const CollisionAlert = mongoose.model(
   "CollisionAlert",
   CollisionAlertSchema
+);
+
+export const CollisionAlertSettings = mongoose.model(
+  "CollisionAlertSettings",
+  CollisionAlertSettingsSchema
 );

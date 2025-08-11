@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { CollisionAlert } from "../models/Collision";
+import { CollisionAlert, CollisionAlertSettings } from "../models/Collision";
 import { Device } from "../models/Device";
 import { CustomError } from "../middleware/errorHandler";
 
@@ -81,6 +81,56 @@ export const getRecentCollisions = async (req: Request, res: Response) => {
         error instanceof Error
           ? error.message
           : "Failed to fetch collision history",
+    });
+  }
+};
+
+export const toggleCollisionStatus = async (req: Request, res: Response) => {
+  try {
+    const { deviceId } = req.params;
+    const userId = (req as any).user.userId;
+
+    // check user owns device
+    const device = await Device.findOne({ _id: deviceId, user: userId });
+    if (!device) {
+      res.status(403).json({
+        success: false,
+        message: `Access denied to device ${deviceId}`,
+      });
+      return;
+    }
+
+    let collisionAlert = await CollisionAlertSettings.findOne({
+      device: deviceId,
+      // user: userId,
+    });
+
+    if (!collisionAlert) {
+      // create one
+
+      collisionAlert = new CollisionAlertSettings({
+        device: deviceId,
+        user: userId,
+        timestamp: new Date(),
+        status: true,
+      });
+    }
+
+    collisionAlert.status = !collisionAlert.status;
+    await collisionAlert.save();
+    res.json({
+      success: true,
+      data: collisionAlert,
+      message: `Collision status updated to ${collisionAlert.status ? "active" : "inactive"}`,
+    });
+  } catch (error) {
+    const statusCode = error instanceof CustomError ? error.statusCode : 500;
+    res.status(statusCode).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to toggle collision status",
     });
   }
 };

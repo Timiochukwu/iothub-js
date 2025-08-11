@@ -1,9 +1,11 @@
 // src/services/WebSocketService.ts
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import { Server as HTTPServer } from 'http';
-import jwt from 'jsonwebtoken';
-import { GeofenceService } from './GeofenceService';
-import { IGeofence } from '../models/Geofence';
+import { Server as SocketIOServer, Socket } from "socket.io";
+import { Server as HTTPServer } from "http";
+import jwt from "jsonwebtoken";
+import { GeofenceService } from "./GeofenceService";
+import { IGeofence } from "../models/Geofence";
+import { Notification } from "../models/Notification";
+import { User } from "../models/User";
 
 export interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -22,7 +24,7 @@ export interface LocationUpdate {
 }
 
 export interface GeofenceAlert {
-  type: 'entry' | 'exit';
+  type: "entry" | "exit";
   device: {
     imei: string;
     name?: string;
@@ -30,7 +32,7 @@ export interface GeofenceAlert {
   geofence: {
     id: string;
     name: string;
-    type: 'circle' | 'polygon';
+    type: "circle" | "polygon";
     color?: string;
   };
   location: {
@@ -42,22 +44,29 @@ export interface GeofenceAlert {
 
 export interface WebSocketEvents {
   // Client to Server
-  'join:user': (userEmail: string) => void;
-  'join:device': (deviceImei: string) => void;
-  'location:update': (data: LocationUpdate) => void;
-  'geofence:test': (data: { geofenceId: string; location: { lat: number; lng: number } }) => void;
-  
+  "join:user": (userEmail: string) => void;
+  "join:device": (deviceImei: string) => void;
+  "location:update": (data: LocationUpdate) => void;
+  "geofence:test": (data: {
+    geofenceId: string;
+    location: { lat: number; lng: number };
+  }) => void;
+
   // Server to Client
-  'geofence:alert': (data: GeofenceAlert) => void;
-  'geofence:created': (data: IGeofence) => void;
-  'geofence:updated': (data: IGeofence) => void;
-  'geofence:deleted': (data: { id: string; name: string }) => void;
-  'geofence:toggled': (data: { id: string; name: string; isActive: boolean }) => void;
-  'device:location': (data: LocationUpdate) => void;
-  'device:online': (data: { imei: string; timestamp: number }) => void;
-  'device:offline': (data: { imei: string; timestamp: number }) => void;
-  'error': (data: { message: string; code?: string }) => void;
-  'success': (data: { message: string; data?: any }) => void;
+  "geofence:alert": (data: GeofenceAlert) => void;
+  "geofence:created": (data: IGeofence) => void;
+  "geofence:updated": (data: IGeofence) => void;
+  "geofence:deleted": (data: { id: string; name: string }) => void;
+  "geofence:toggled": (data: {
+    id: string;
+    name: string;
+    isActive: boolean;
+  }) => void;
+  "device:location": (data: LocationUpdate) => void;
+  "device:online": (data: { imei: string; timestamp: number }) => void;
+  "device:offline": (data: { imei: string; timestamp: number }) => void;
+  error: (data: { message: string; code?: string }) => void;
+  success: (data: { message: string; data?: any }) => void;
 }
 
 export class WebSocketService {
@@ -73,9 +82,9 @@ export class WebSocketService {
       cors: {
         origin: process.env.CORS_ORIGIN || "*",
         methods: ["GET", "POST"],
-        credentials: true
+        credentials: true,
       },
-      transports: ['websocket', 'polling']
+      transports: ["websocket", "polling"],
     });
 
     this.geofenceService = new GeofenceService();
@@ -88,21 +97,26 @@ export class WebSocketService {
     // Authentication middleware
     this.io.use(async (socket: AuthenticatedSocket, next) => {
       try {
-        const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
-        
+        const token =
+          socket.handshake.auth.token ||
+          socket.handshake.headers.authorization?.split(" ")[1];
+
         if (!token) {
-          return next(new Error('Authentication token required'));
+          return next(new Error("Authentication token required"));
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
-        
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET || "your-secret-key"
+        ) as any;
+
         socket.userId = decoded.userId;
         socket.userEmail = decoded.email;
         socket.deviceImei = decoded.deviceImei; // For device connections
-        
+
         next();
       } catch (error) {
-        next(new Error('Invalid authentication token'));
+        next(new Error("Invalid authentication token"));
       }
     });
 
@@ -111,15 +125,15 @@ export class WebSocketService {
       const rateLimitMap = new Map<string, number[]>();
       const maxRequests = 100;
       const windowMs = 60000; // 1 minute
-      
+
       const now = Date.now();
       const requests = rateLimitMap.get(socket.id) || [];
-      const recentRequests = requests.filter(time => now - time < windowMs);
-      
+      const recentRequests = requests.filter((time) => now - time < windowMs);
+
       if (recentRequests.length >= maxRequests) {
-        return next(new Error('Rate limit exceeded'));
+        return next(new Error("Rate limit exceeded"));
       }
-      
+
       recentRequests.push(now);
       rateLimitMap.set(socket.id, recentRequests);
       next();
@@ -127,38 +141,48 @@ export class WebSocketService {
   }
 
   private setupEventHandlers(): void {
-    this.io.on('connection', (socket: AuthenticatedSocket) => {
-      console.log(`Client connected: ${socket.id} (User: ${socket.userEmail}, Device: ${socket.deviceImei})`);
+    this.io.on("connection", (socket: AuthenticatedSocket) => {
+      console.log(
+        `Client connected: ${socket.id} (User: ${socket.userEmail}, Device: ${socket.deviceImei})`
+      );
 
       // Handle user room joining
-      socket.on('join:user', (userEmail: string) => {
+      socket.on("join:user", (userEmail: string) => {
         if (socket.userEmail !== userEmail) {
-          socket.emit('error', { message: 'Unauthorized to join this user room', code: 'UNAUTHORIZED' });
+          socket.emit("error", {
+            message: "Unauthorized to join this user room",
+            code: "UNAUTHORIZED",
+          });
           return;
         }
-        
+
         socket.join(`user:${userEmail}`);
         this.addClientToRoom(`user:${userEmail}`, socket);
-        
-        socket.emit('success', { message: `Joined user room: ${userEmail}` });
+
+        socket.emit("success", { message: `Joined user room: ${userEmail}` });
         console.log(`Socket ${socket.id} joined user room: ${userEmail}`);
       });
 
       // Handle device room joining
-      socket.on('join:device', (deviceImei: string) => {
+      socket.on("join:device", (deviceImei: string) => {
         socket.join(`device:${deviceImei}`);
         this.addClientToRoom(`device:${deviceImei}`, socket);
-        
-        socket.emit('success', { message: `Joined device room: ${deviceImei}` });
+
+        socket.emit("success", {
+          message: `Joined device room: ${deviceImei}`,
+        });
         console.log(`Socket ${socket.id} joined device room: ${deviceImei}`);
       });
 
       // Handle location updates from devices
-      socket.on('location:update', async (data: LocationUpdate) => {
+      socket.on("location:update", async (data: LocationUpdate) => {
         try {
           // Validate location data
           if (!this.isValidLocation(data)) {
-            socket.emit('error', { message: 'Invalid location data', code: 'INVALID_LOCATION' });
+            socket.emit("error", {
+              message: "Invalid location data",
+              code: "INVALID_LOCATION",
+            });
             return;
           }
 
@@ -167,53 +191,74 @@ export class WebSocketService {
           this.deviceLastSeen.set(data.imei, Date.now());
 
           // Broadcast location to device room
-          this.io.to(`device:${data.imei}`).emit('device:location', data);
+          this.io.to(`device:${data.imei}`).emit("device:location", data);
 
           // Check geofences for this location
           await this.checkGeofences(data);
 
           // Mark device as online if it was offline
           if (!this.deviceLastSeen.has(data.imei)) {
-            this.io.to(`device:${data.imei}`).emit('device:online', {
+            this.io.to(`device:${data.imei}`).emit("device:online", {
               imei: data.imei,
-              timestamp: Date.now()
+              timestamp: Date.now(),
             });
           }
         } catch (error) {
-          console.error('Error processing location update:', error);
-          socket.emit('error', { message: 'Failed to process location update', code: 'LOCATION_ERROR' });
+          console.error("Error processing location update:", error);
+          socket.emit("error", {
+            message: "Failed to process location update",
+            code: "LOCATION_ERROR",
+          });
         }
       });
 
       // Handle geofence testing
-      socket.on('geofence:test', async (data: { geofenceId: string; location: { lat: number; lng: number } }) => {
-        try {
-          const geofence = await this.geofenceService.getGeofenceById(data.geofenceId);
-          if (!geofence) {
-            socket.emit('error', { message: 'Geofence not found', code: 'NOT_FOUND' });
-            return;
-          }
+      socket.on(
+        "geofence:test",
+        async (data: {
+          geofenceId: string;
+          location: { lat: number; lng: number };
+        }) => {
+          try {
+            const geofence = await this.geofenceService.getGeofenceById(
+              data.geofenceId
+            );
+            if (!geofence) {
+              socket.emit("error", {
+                message: "Geofence not found",
+                code: "NOT_FOUND",
+              });
+              return;
+            }
 
-          const isInside = this.isPointInGeofence(data.location.lat, data.location.lng, geofence);
-          
-          socket.emit('success', { 
-            message: `Point is ${isInside ? 'inside' : 'outside'} geofence`,
-            data: { isInside, geofence: geofence.name }
-          });
-        } catch (error) {
-          console.error('Error testing geofence:', error);
-          socket.emit('error', { message: 'Failed to test geofence', code: 'TEST_ERROR' });
+            const isInside = this.isPointInGeofence(
+              data.location.lat,
+              data.location.lng,
+              geofence
+            );
+
+            socket.emit("success", {
+              message: `Point is ${isInside ? "inside" : "outside"} geofence`,
+              data: { isInside, geofence: geofence.name },
+            });
+          } catch (error) {
+            console.error("Error testing geofence:", error);
+            socket.emit("error", {
+              message: "Failed to test geofence",
+              code: "TEST_ERROR",
+            });
+          }
         }
-      });
+      );
 
       // Handle disconnection
-      socket.on('disconnect', (reason) => {
+      socket.on("disconnect", (reason) => {
         console.log(`Client disconnected: ${socket.id} (Reason: ${reason})`);
         this.removeClientFromAllRooms(socket);
       });
 
       // Handle connection errors
-      socket.on('error', (error) => {
+      socket.on("error", (error) => {
         console.error(`Socket error for ${socket.id}:`, error);
       });
     });
@@ -222,101 +267,165 @@ export class WebSocketService {
   // Check if location triggers any geofences
   private async checkGeofences(location: LocationUpdate): Promise<void> {
     try {
-      const geofences = await this.geofenceService.getActiveGeofencesForDevice(location.imei);
-      
+      const geofences = await this.geofenceService.getActiveGeofencesForDevice(
+        location.imei
+      );
+
       for (const geofence of geofences) {
-        const isInside = this.isPointInGeofence(location.lat, location.lng, geofence);
-        const wasInside = this.wasDeviceInGeofence(location.imei, geofence._id.toString());
-        
+        const isInside = this.isPointInGeofence(
+          location.lat,
+          location.lng,
+          geofence
+        );
+        const wasInside = this.wasDeviceInGeofence(
+          location.imei,
+          geofence._id.toString()
+        );
+
         // Check for entry
         if (isInside && !wasInside && geofence.alertOnEntry) {
-          await this.handleGeofenceEvent('entry', location, geofence);
+          await this.handleGeofenceEvent("entry", location, geofence);
         }
-        
+
         // Check for exit
         if (!isInside && wasInside && geofence.alertOnExit) {
-          await this.handleGeofenceEvent('exit', location, geofence);
+          await this.handleGeofenceEvent("exit", location, geofence);
         }
-        
+
         // Update device state
-        this.updateDeviceGeofenceState(location.imei, geofence._id.toString(), isInside);
+        this.updateDeviceGeofenceState(
+          location.imei,
+          geofence._id.toString(),
+          isInside
+        );
       }
     } catch (error) {
-      console.error('Error checking geofences:', error);
+      console.error("Error checking geofences:", error);
     }
   }
 
   // Handle geofence entry/exit events
-  private async handleGeofenceEvent(type: 'entry' | 'exit', location: LocationUpdate, geofence: IGeofence): Promise<void> {
+  private async handleGeofenceEvent(
+    type: "entry" | "exit",
+    location: LocationUpdate,
+    geofence: IGeofence
+  ): Promise<void> {
     try {
       // Create alert data
       const alert: GeofenceAlert = {
         type,
         device: {
           imei: location.imei,
-          name: `Device ${location.imei}` // You might want to get actual device name
+          name: `Device ${location.imei}`, // You might want to get actual device name
         },
         geofence: {
           id: geofence._id.toString(),
           name: geofence.name,
           type: geofence.type,
-          color: geofence.color
+          color: geofence.color,
         },
         location: {
           lat: location.lat,
-          lng: location.lng
+          lng: location.lng,
         },
-        timestamp: location.timestamp
+        timestamp: location.timestamp,
       };
 
+      // get user date
+      const user = await User.findOne({ email: geofence.userEmail });
+      if (!user) {
+        console.error(`User not found for geofence ${geofence._id}`);
+        return;
+      }
+
+      // if (type === "entry") {
+      const message = `Device ${location.imei} ${type === "entry" ? "entered" : "exited"} geofence ${geofence.name}`;
+      Notification.create({
+        user: user._id,
+        data: {
+          geofence: {
+            id: geofence._id.toString(),
+            name: geofence.name,
+            type: geofence.type,
+            color: geofence.color,
+          },
+          location: {
+            lat: location.lat,
+            lng: location.lng,
+          },
+        },
+        message,
+        type: "geofence_alert",
+        read: false,
+        timestamp: location.timestamp,
+      });
+      // }
+
       // Emit to device room
-      this.io.to(`device:${location.imei}`).emit('geofence:alert', alert);
+      this.io.to(`device:${location.imei}`).emit("geofence:alert", alert);
 
       // Emit to user room if geofence has userEmail
       if (geofence.userEmail) {
-        this.io.to(`user:${geofence.userEmail}`).emit('geofence:alert', alert);
+        this.io.to(`user:${geofence.userEmail}`).emit("geofence:alert", alert);
       }
 
-      console.log(`Geofence ${type} alert: Device ${location.imei} ${type === 'entry' ? 'entered' : 'exited'} ${geofence.name}`);
+      console.log(
+        `Geofence ${type} alert: Device ${location.imei} ${type === "entry" ? "entered" : "exited"} ${geofence.name}`
+      );
     } catch (error) {
-      console.error('Error handling geofence event:', error);
+      console.error("Error handling geofence event:", error);
     }
   }
 
   // Geofence CRUD event notifications
   public notifyGeofenceCreated(geofence: IGeofence): void {
-    this.io.to(`user:${geofence.userEmail}`).emit('geofence:created', geofence);
+    this.io.to(`user:${geofence.userEmail}`).emit("geofence:created", geofence);
     if (geofence.deviceImei) {
-      this.io.to(`device:${geofence.deviceImei}`).emit('geofence:created', geofence);
+      this.io
+        .to(`device:${geofence.deviceImei}`)
+        .emit("geofence:created", geofence);
     }
   }
 
   public notifyGeofenceUpdated(geofence: IGeofence): void {
-    this.io.to(`user:${geofence.userEmail}`).emit('geofence:updated', geofence);
+    this.io.to(`user:${geofence.userEmail}`).emit("geofence:updated", geofence);
     if (geofence.deviceImei) {
-      this.io.to(`device:${geofence.deviceImei}`).emit('geofence:updated', geofence);
+      this.io
+        .to(`device:${geofence.deviceImei}`)
+        .emit("geofence:updated", geofence);
     }
   }
 
-  public notifyGeofenceDeleted(geofenceId: string, name: string, userEmail?: string, deviceImei?: string): void {
+  public notifyGeofenceDeleted(
+    geofenceId: string,
+    name: string,
+    userEmail?: string,
+    deviceImei?: string
+  ): void {
     const deleteData = { id: geofenceId, name };
-    
+
     if (userEmail) {
-      this.io.to(`user:${userEmail}`).emit('geofence:deleted', deleteData);
+      this.io.to(`user:${userEmail}`).emit("geofence:deleted", deleteData);
     }
     if (deviceImei) {
-      this.io.to(`device:${deviceImei}`).emit('geofence:deleted', deleteData);
+      this.io.to(`device:${deviceImei}`).emit("geofence:deleted", deleteData);
     }
   }
 
-  public notifyGeofenceToggled(geofenceId: string, name: string, isActive: boolean, userEmail?: string, deviceImei?: string): void {
+  public notifyGeofenceToggled(
+    geofenceId: string,
+    name: string,
+    isActive: boolean,
+    userEmail?: string,
+    deviceImei?: string
+  ): void {
     const toggleData = { id: geofenceId, name, isActive };
-    
+
     if (userEmail) {
-      this.io.to(`user:${userEmail}`).emit('geofence:toggled', toggleData);
+      this.io.to(`user:${userEmail}`).emit("geofence:toggled", toggleData);
     }
     if (deviceImei) {
-      this.io.to(`device:${deviceImei}`).emit('geofence:toggled', toggleData);
+      this.io.to(`device:${deviceImei}`).emit("geofence:toggled", toggleData);
     }
   }
 
@@ -324,25 +433,37 @@ export class WebSocketService {
   private isValidLocation(location: LocationUpdate): boolean {
     return (
       location &&
-      typeof location.lat === 'number' &&
-      typeof location.lng === 'number' &&
-      typeof location.imei === 'string' &&
-      typeof location.timestamp === 'number' &&
-      location.lat >= -90 && location.lat <= 90 &&
-      location.lng >= -180 && location.lng <= 180 &&
+      typeof location.lat === "number" &&
+      typeof location.lng === "number" &&
+      typeof location.imei === "string" &&
+      typeof location.timestamp === "number" &&
+      location.lat >= -90 &&
+      location.lat <= 90 &&
+      location.lng >= -180 &&
+      location.lng <= 180 &&
       location.imei.length > 0
     );
   }
 
-  private isPointInGeofence(lat: number, lng: number, geofence: IGeofence): boolean {
-    if (geofence.type === 'circle' && geofence.center && geofence.radius) {
+  private isPointInGeofence(
+    lat: number,
+    lng: number,
+    geofence: IGeofence
+  ): boolean {
+    if (geofence.type === "circle" && geofence.center && geofence.radius) {
       return this.geofenceService.isPointInCircle(
-        lat, lng, 
-        geofence.center.lat, geofence.center.lng, 
+        lat,
+        lng,
+        geofence.center.lat,
+        geofence.center.lng,
         geofence.radius
       );
-    } else if (geofence.type === 'polygon' && geofence.coordinates) {
-      return this.geofenceService.isPointInPolygon(lat, lng, geofence.coordinates);
+    } else if (geofence.type === "polygon" && geofence.coordinates) {
+      return this.geofenceService.isPointInPolygon(
+        lat,
+        lng,
+        geofence.coordinates
+      );
     }
     return false;
   }
@@ -354,11 +475,15 @@ export class WebSocketService {
     return deviceStates.has(geofenceId);
   }
 
-  private updateDeviceGeofenceState(imei: string, geofenceId: string, isInside: boolean): void {
+  private updateDeviceGeofenceState(
+    imei: string,
+    geofenceId: string,
+    isInside: boolean
+  ): void {
     if (!this.deviceGeofenceStates.has(imei)) {
       this.deviceGeofenceStates.set(imei, new Set());
     }
-    
+
     const deviceStates = this.deviceGeofenceStates.get(imei)!;
     if (isInside) {
       deviceStates.add(geofenceId);
@@ -389,12 +514,12 @@ export class WebSocketService {
   private startOfflineChecker(): void {
     setInterval(() => {
       const now = Date.now();
-      
+
       this.deviceLastSeen.forEach((lastSeen, imei) => {
         if (now - lastSeen > this.OFFLINE_THRESHOLD) {
-          this.io.to(`device:${imei}`).emit('device:offline', {
+          this.io.to(`device:${imei}`).emit("device:offline", {
             imei,
-            timestamp: now
+            timestamp: now,
           });
           this.deviceLastSeen.delete(imei);
           this.deviceLocations.delete(imei);
