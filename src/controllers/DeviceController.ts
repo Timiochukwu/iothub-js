@@ -355,29 +355,37 @@ export class DeviceController {
         return;
       }
 
-      // 🔍 First: Try to get VIN from latest telemetry with VIN
-      const latestTelemetry = await Telemetry.findOne({
+      // 🔍 Search through telemetry records for this IMEI to find one with VIN
+      const telemetryRecords = await Telemetry.find({
         imei,
-        "state.reported.256": { $exists: true },
-      }).sort({ "state.reported.ts": -1 });
+        $or: [
+          { "state.reported.256": { $exists: true, $nin: [null, ""] } },
+          { "state.reported.vin": { $exists: true, $nin: [null, ""] } },
+          // Add other possible VIN field locations if needed
+        ]
+      })
+      .sort({ "state.reported.ts": -1 }) // Latest first
+      .limit(50); // Limit to last 50 records to avoid performance issues
 
-      if (latestTelemetry) {
-        const raw = latestTelemetry;
-        
-        // ✅ Fix: Add proper null checking for nested properties
-        if (!raw.state) {
-          raw.state = {
-            reported: {}
-          };
-        }
-        if (!raw.state.reported) {
-          raw.state.reported = {};
-        }
-        
-        const mapped = mapTelemetry(raw);
-        if (mapped.vin) {
-          res.status(200).json({ success: true, vin: mapped.vin });
-          return;
+      console.log(`[getDeviceVin] Found ${telemetryRecords.length} telemetry records for IMEI ${imei}`);
+
+      // Loop through records to find the first one with a valid VIN
+      for (const telemetryRecord of telemetryRecords) {
+        try {
+          // Convert to plain object if it's a Mongoose document
+          const rawDoc = telemetryRecord.toObject ? telemetryRecord.toObject() : telemetryRecord;
+          
+          if (rawDoc.state?.reported) {
+            const mapped = mapTelemetry(rawDoc);
+            if (mapped.vin && mapped.vin.trim() !== '') {
+              console.log(`[getDeviceVin] Found VIN: ${mapped.vin} for IMEI ${imei}`);
+              res.status(200).json({ success: true, vin: mapped.vin });
+              return;
+            }
+          }
+        } catch (error) {
+          console.warn(`[getDeviceVin] Error processing telemetry record:`, error);
+          continue; // Skip this record and try the next one
         }
       }
 
