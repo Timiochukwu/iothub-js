@@ -1,4 +1,4 @@
-// src/controllers/WorkingHoursController.ts
+  // src/controllers/WorkingHoursController.ts
 import { Request, Response } from "express";
 import { WorkingHours } from "../models/WorkingHours";
 import { Telemetry } from "../models/Telemetry";
@@ -7,12 +7,13 @@ import { WorkingHourAlert } from "../models/WorkingHours";
 import { Device } from "../models/Device";
 import { User } from "../models/User";
 import { NotificationService } from "../services/NotificationService";
+import { log } from "console";
 
 export class WorkingHoursController {
   static async create(req: Request, res: Response) {
     try {
-      const { deviceId, startTime, endTime, restingLocation } = req.body;
-      if (!deviceId || !startTime || !endTime || !restingLocation) {
+      const { imei, startTime, endTime, restingLocation } = req.body;
+      if (!imei || !startTime || !endTime || !restingLocation) {
         return res.status(400).json({ message: "Missing required fields" });
       }
       // check endTime is after startTime
@@ -24,13 +25,13 @@ export class WorkingHoursController {
         });
       }
       // check device exists
-      const device = await Device.findById(deviceId);
+      const device = await Device.findOne({imei});
       if (!device) {
         return res.status(404).json({ message: "Device not found" });
       }
 
       const workingHours = await WorkingHours.create({
-        deviceId: device._id,
+        imei: imei,
         startTime,
         endTime,
         // startLocation: parseLatLng(startRecord?.latlng),
@@ -43,7 +44,7 @@ export class WorkingHoursController {
         message: "Working hours created successfully",
         data: {
           deviceId: device._id,
-          imei: device.imei,
+          imei: imei,
           startTime: workingHours.startTime,
           endTime: workingHours.endTime,
           endLocation: workingHours.endLocation,
@@ -62,6 +63,21 @@ export class WorkingHoursController {
     }
   }
 
+  static async getByImei(req: Request, res: Response) {
+    try {
+      const { imei } = req.params;
+      if (!imei) {
+        return res.status(400).json({ message: "IMEI is required" });
+      }
+  
+      const records = await WorkingHours.find({ imei }).sort({ createdAt: -1 });
+      return res.status(200).json(records);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Failed to fetch working hours" });
+    }
+  }
+
   static async getAll(req: Request, res: Response) {
     try {
       const records = await WorkingHours.find().sort({ createdAt: -1 });
@@ -74,14 +90,16 @@ export class WorkingHoursController {
 
   static async updateStatus(req: Request, res: Response) {
     try {
-      const { deviceId } = req.params;
+      const { id } = req.params;
+
+      log("Updating status for working hours with ID:", id);
       const { status } = req.body;
       if (!status || !["enabled", "disabled"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
 
       // incase the data does not have status field before
-      const existingRecord = await WorkingHours.findById(deviceId);
+      const existingRecord = await WorkingHours.findById(id);
       if (!existingRecord) {
         return res.status(404).json({ message: "Working hours not found" });
       }
@@ -106,17 +124,13 @@ export class WorkingHoursController {
 
   static async update(req: Request, res: Response) {
     try {
-      const { deviceId } = req.params;
-      const records = await WorkingHours.find({ deviceId });
-      if (!records) {
-        return res.status(404).json({ message: "No working hours found" });
-      }
-
+      const { id } = req.params;
       const { startTime, endTime, restingLocation } = req.body;
+      
       if (!startTime || !endTime || !restingLocation) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-
+  
       // check endTime is after startTime
       const startTimestamp = new Date(startTime).getTime();
       const endTimestamp = new Date(endTime).getTime();
@@ -125,24 +139,24 @@ export class WorkingHoursController {
           message: "End time must be after start time",
         });
       }
-
-      // update one
-      const updatedRecord = await WorkingHours.findOneAndUpdate(
-        { deviceId },
+  
+      const updatedRecord = await WorkingHours.findByIdAndUpdate(
+        id,
         { startTime, endTime, endLocation: parseLatLng(restingLocation) },
         { new: true }
       );
-
+  
       if (!updatedRecord) {
-        return res.status(404).json({ message: "An unknown error occurred" });
+        return res.status(404).json({ message: "Working hours record not found" });
       }
-
-      return res.status(200).json({ message: "Working hours updated" });
+  
+      return res.status(200).json({ 
+        message: "Working hours updated",
+        data: updatedRecord 
+      });
     } catch (error) {
       console.error(error);
-      return res
-        .status(500)
-        .json({ message: "Failed to update working hours" });
+      return res.status(500).json({ message: "Failed to update working hours" });
     }
   }
 

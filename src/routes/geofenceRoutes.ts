@@ -7,35 +7,24 @@ const router = Router();
 const geofenceController = new GeofenceController();
 
 // Basic CRUD operations
+// Basic CRUD operations
 router.post("/", authenticateToken, geofenceController.createGeofence);
 router.get("/", authenticateToken, geofenceController.listGeofences);
+
+// Device-specific operations (more specific routes first)
+router.get("/imei/:imei", authenticateToken, geofenceController.getGeofencesByImei);
+router.get("/device/:imei", authenticateToken, geofenceController.getDeviceGeofences);
+router.get("/stats", authenticateToken, geofenceController.getStats);
+router.get("/events", authenticateToken, geofenceController.getEvents);
+
+// Single geofence operations
 router.get("/:id", authenticateToken, geofenceController.getGeofence);
 router.put("/:id", authenticateToken, geofenceController.updateGeofence);
 router.delete("/:id", authenticateToken, geofenceController.deleteGeofence);
 
 // Advanced operations
-router.patch(
-  "/:id/toggle",
-  authenticateToken,
-  geofenceController.toggleGeofence
-);
+router.patch("/:id/toggle", authenticateToken, geofenceController.toggleGeofence);
 router.put("/:id/toggle", authenticateToken, geofenceController.toggleGeofence);
 router.post("/bulk", authenticateToken, geofenceController.bulkOperation);
-router.post(
-  "/template/:templateId",
-  authenticateToken,
-  geofenceController.createFromTemplate
-);
-
-// Analytics and reporting
-router.get("/stats", authenticateToken, geofenceController.getStats);
-router.get("/events", authenticateToken, geofenceController.getEvents);
-
-// Device-specific operations
-router.get(
-  "/device/:imei",
-  authenticateToken,
-  geofenceController.getDeviceGeofences
-);
-
+router.post("/template/:templateId", authenticateToken, geofenceController.createFromTemplate);
 export default router;

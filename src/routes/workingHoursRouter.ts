@@ -2,7 +2,6 @@
 import { Router } from "express";
 import { WorkingHoursController } from "../controllers/WorkingHoursController";
 import { authenticateToken } from "../middleware/auth";
-// import { validateRequest } from "../middleware/validation"; // Uncomment if you add validation
 
 const workingHoursRouter = Router();
 
@@ -10,24 +9,26 @@ workingHoursRouter.post("/", authenticateToken, async (req, res) => {
   await WorkingHoursController.create(req, res);
 });
 
-workingHoursRouter.put("/:deviceId", authenticateToken, async (req, res) => {
-  await WorkingHoursController.update(req, res);
-});
-
-workingHoursRouter.put(
-  "/:deviceId/status",
-  authenticateToken,
-  async (req, res) => {
-    await WorkingHoursController.updateStatus(req, res);
-  }
-);
-
 workingHoursRouter.get("/", authenticateToken, async (req, res) => {
   await WorkingHoursController.getAll(req, res);
 });
+
+workingHoursRouter.put("/:id/status", authenticateToken, async (req, res) => {
+  await WorkingHoursController.updateStatus(req, res);
+});
+
+workingHoursRouter.put("/:imei", authenticateToken, async (req, res) => {
+  await WorkingHoursController.update(req, res);
+});
+
 workingHoursRouter.delete("/:id", authenticateToken, async (req, res) => {
   await WorkingHoursController.delete(req, res);
 });
+
+workingHoursRouter.get("/:imei", authenticateToken, async (req, res) => {
+  await WorkingHoursController.getByImei(req, res);
+});
+
 
 // // Working hour alert endpoints
 // workingHoursRouter.post(

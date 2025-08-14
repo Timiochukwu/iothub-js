@@ -80,6 +80,11 @@ export class GeofenceService {
 
       // Validate device exists if deviceImei provided
       if (data.deviceImei) {
+        // Validate IMEI format
+        if (!/^\d{15}$/.test(data.deviceImei)) {
+          throw new CustomError("Invalid IMEI format. IMEI must be 15 digits", 400);
+        }
+        
         const device = await Device.findOne({ imei: data.deviceImei });
         if (!device) {
           throw new CustomError(
@@ -606,6 +611,28 @@ export class GeofenceService {
       );
     }
   }
+
+  async getGeofencesByImei(imei: string): Promise<IGeofence[]> {
+    try {
+      // Verify device exists
+      const device = await Device.findOne({ imei });
+      if (!device) {
+        throw new CustomError("Device not found", 404);
+      }
+  
+      // Get all geofences for this IMEI (active and inactive)
+      return await Geofence.find({ deviceImei: imei })
+        .sort({ createdAt: -1 });
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      throw new CustomError(
+        "Unable to fetch geofences for device. Please try again.",
+        500
+      );
+    }
+  } 
 
   // Method to broadcast geofence events
   // private broadcastGeofenceEvent(

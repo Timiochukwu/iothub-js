@@ -2,8 +2,7 @@
 import mongoose, { Schema, Types } from "mongoose";
 
 const WorkingHoursSchema = new mongoose.Schema({
-  deviceId: { type: String, required: true /*, unique: true */ },
-  // date: { type: Date, required: true },
+  imei: { type: String, required: true  },
   startTime: { type: String, required: true },
   endTime: { type: String, required: true },
   triggered: { type: Boolean, default: false },

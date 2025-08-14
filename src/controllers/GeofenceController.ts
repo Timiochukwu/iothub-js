@@ -389,6 +389,46 @@ export class GeofenceController {
     }
   };
 
+
+  // GET /api/geofences/imei/:imei - Get all geofences for specific IMEI
+getGeofencesByImei = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { imei } = req.params;
+
+    if (!imei) {
+      res.status(400).json({ 
+        success: false, 
+        message: 'Device IMEI is required', 
+        error: 'MISSING_IMEI' 
+      });
+      return;
+    }
+
+    // Validate IMEI format
+    if (!/^\d{15}$/.test(imei)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid IMEI format. IMEI must be 15 digits',
+        error: 'INVALID_IMEI'
+      });
+      return;
+    }
+
+    const geofences = await this.geofenceService.getGeofencesByImei(imei);
+    
+    res.status(200).json({
+      success: true,
+      data: geofences,
+      meta: {
+        total: geofences.length,
+        deviceImei: imei
+      }
+    });
+  } catch (error) {
+    this.handleError(res, error);
+  }
+};
+
   // Error handling utility
   private handleError(res: Response, error: any): void {
     if (error instanceof CustomError) {
