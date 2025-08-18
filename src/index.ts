@@ -37,6 +37,49 @@ import serviceAlertsRoutes from "./routes/serviceAlertsRoutes";
 
 import path from "path";
 
+import {Notification} from "./models/Notification";
+import {Telemetry} from "./models/Telemetry";
+
+import cron from "node-cron";
+
+cron.schedule("0 0 * * *", async () => {
+  console.log("⏰ Running midnight cleanup job...");
+
+  try {
+    // Fetch documents sorted by createdAt (oldest first)
+    const docs = await Notification.find().sort({ createdAt: 1 });
+
+    if (docs.length > 10) {
+      // Get IDs of the ones to delete (everything after the first 10)
+      const idsToDelete = docs.slice(10).map((doc) => doc._id);
+
+      await Notification.deleteMany({ _id: { $in: idsToDelete } });
+      console.log(`✅ Cleanup done. Kept 10, deleted ${idsToDelete.length}`);
+    } else {
+      console.log("✅ Less than or equal to 10 docs, nothing deleted");
+    }
+  } catch (err) {
+    console.error("❌ Cleanup job failed:", err);
+  }
+});
+
+
+cron.schedule("0 0 * * *", async () => {
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 21); // 21 days ago
+
+    const result = await Telemetry.deleteMany({
+      createdAt: { $lt: cutoffDate }, // assuming you use createdAt timestamps
+    });
+
+    console.log(
+      `🧹 Telemetry cleanup: ${result.deletedCount} records older than 21 days removed`
+    );
+  } catch (err) {
+    console.error("❌ Error during telemetry cleanup:", err);
+  }
+});
 // Load environment variables
 dotenv.config();
 
