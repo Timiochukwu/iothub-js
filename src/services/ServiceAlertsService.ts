@@ -55,7 +55,12 @@ export class ServiceAlertsService {
     const alerts: ServiceAlert[] = [];
   
     for (const data of recentData) {
-      const timestamp = new Date(data.timestamp || Date.now());
+      const timestamp = new Date(data.timestamp || (data as any).lastTs);
+
+      if (isNaN(timestamp.getTime())) {
+        console.warn(`Invalid timestamp for record ${data._id}`);
+        continue;
+      }
       const alertBase = {
         imei,
         detectedTime: timestamp,
@@ -211,8 +216,29 @@ export class ServiceAlertsService {
     return alerts.find(alert => alert.id === alertId) || null;
   }
 
-  // Helper method to get alert statistics for dashboard
-  async getAlertStatistics(imei: string, days: number = 7): Promise<{
+  private normalizeAlertType(type: string): string {
+    return type.trim().toLowerCase();
+  }
+
+  private ensureDateObject(date: Date | string): Date {
+    return typeof date === 'string' ? new Date(date) : date;
+  }
+
+  private formatDateToYYYYMMDD(date: Date): string {
+    const isoString = date.toISOString();
+    const datePart = isoString.split('T')[0];
+    
+    if (!datePart) {
+      throw new Error(`Invalid date format: ${isoString}`);
+    }
+    
+    return datePart;
+  }
+
+  async getAlertStatistics(
+    imei: string,
+    days: number = 7
+  ): Promise<{
     totalAlerts: number;
     criticalAlerts: number;
     warningAlerts: number;
@@ -221,38 +247,26 @@ export class ServiceAlertsService {
   }> {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-
+    startDate.setUTCHours(0, 0, 0, 0);
+  
+    // Get all alerts without limit and include resolved ones
     const alerts = await this.getRecentAlerts(imei, undefined, 1000);
-    const recentAlerts = alerts.filter(alert => 
-      alert.detectedTime >= startDate
-    );
-
+    
+    const recentAlerts = alerts.filter(alert => {
+      const detectedDate = this.ensureDateObject(alert.detectedTime);
+      return detectedDate >= startDate;
+    });
+  
+    // Generate statistics
     const alertsByType: Record<string, number> = {};
     recentAlerts.forEach(alert => {
-      alertsByType[alert.type] = (alertsByType[alert.type] || 0) + 1;
+      const type = this.normalizeAlertType(alert.type);
+      alertsByType[type] = (alertsByType[type] || 0) + 1;
     });
-
-    // Create trend data
-    const alertTrend: { date: string; count: number }[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      
-      // Add null check
-      if (!dateStr) continue;
-      
-      const dayAlerts = recentAlerts.filter(alert => {
-        const alertDateStr = alert.detectedTime.toISOString().split('T')[0];
-        return alertDateStr === dateStr;
-      });
-      
-      alertTrend.push({
-        date: dateStr,
-        count: dayAlerts.length
-      });
-    }
-
+  
+    // Generate trend data
+    const alertTrend = this.generateAlertTrend(recentAlerts, days);
+  
     return {
       totalAlerts: recentAlerts.length,
       criticalAlerts: recentAlerts.filter(a => a.severity === "Critical").length,
@@ -261,6 +275,33 @@ export class ServiceAlertsService {
       alertTrend,
     };
   }
+  
+  private generateAlertTrend(alerts: ServiceAlert[], days: number): { date: string; count: number }[] {
+    const trend: { date: string; count: number }[] = [];
+    const now = new Date();
+    
+    for (let i = 0; i < days; i++) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - (days - 1 - i));
+      date.setUTCHours(0, 0, 0, 0);
+      
+      // Safely get date string
+      const dateParts = date.toISOString().split('T');
+      if (!dateParts[0]) continue; // Skip if date format is invalid
+      
+      const dateStr = dateParts[0];
+      const count = alerts.filter(alert => {
+        const alertDateParts = this.ensureDateObject(alert.detectedTime).toISOString().split('T');
+        return alertDateParts[0] === dateStr;
+      }).length;
+      
+      trend.push({ date: dateStr, count });
+    }
+    
+    return trend;
+  }
+
+  
 
   async testAlertGeneration(): Promise<ServiceAlert[]> {
     const mockData = {

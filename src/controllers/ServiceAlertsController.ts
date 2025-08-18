@@ -133,22 +133,54 @@ export class ServiceAlertsController {
    * GET /api/service-alerts/statistics/:imei
    * Get alert statistics for dashboard
    */
+  // getAlertStatistics = async (req: Request, res: Response): Promise<void> => {
+  //   try {
+  //     const { imei } = req.params;
+  //     const { days } = req.query;
+
+  //     if (!imei) {
+  //       handleError(res, "IMEI is required", 400);
+  //       return;
+  //     }
+
+  //     const statisticsDays = days ? parseInt(days as string) : 7;
+  //     const statistics = await this.serviceAlertsService.getAlertStatistics(
+  //       imei,
+  //       statisticsDays
+  //     );
+
+  //     handleSuccess(res, {
+  //       statistics,
+  //       period: `${statisticsDays} days`,
+  //       message: "Alert statistics retrieved successfully"
+  //     });
+  //   } catch (error) {
+  //     console.error("Error getting alert statistics:", error);
+  //     handleError(res, "Failed to retrieve alert statistics", 500);
+  //   }
+  // };
+
   getAlertStatistics = async (req: Request, res: Response): Promise<void> => {
     try {
       const { imei } = req.params;
       const { days } = req.query;
-
+  
       if (!imei) {
         handleError(res, "IMEI is required", 400);
         return;
       }
-
+  
       const statisticsDays = days ? parseInt(days as string) : 7;
+      if (isNaN(statisticsDays)) {
+        handleError(res, "Invalid days parameter", 400);
+        return;
+      }
+  
       const statistics = await this.serviceAlertsService.getAlertStatistics(
         imei,
         statisticsDays
       );
-
+  
       handleSuccess(res, {
         statistics,
         period: `${statisticsDays} days`,
