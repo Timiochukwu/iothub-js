@@ -107,6 +107,7 @@ app.use(
             "http://localhost:3000",
             "http://localhost:5177",
             "http://localhost:3001",
+            "https://scetruiothub.vercel.app"
           ],
     credentials: true,
   })

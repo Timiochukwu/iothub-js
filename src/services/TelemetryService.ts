@@ -457,6 +457,7 @@ export class TelemetryService {
       // sort by state.reported.ts
       const latest = await Telemetry.findOne({ imei }).sort({
         "state.reported.ts": -1,
+        timestamp: -1,
       });
 
       return latest ? this.mapToTelemetryData(latest) : null;
