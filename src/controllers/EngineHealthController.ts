@@ -61,36 +61,46 @@ export class EngineHealthController {
 
   async getCurrentEngineStatus(req: Request, res: Response): Promise<void> {
     try {
+      console.log("=== Controller getCurrentEngineStatus started ===");
+      console.log("req.params:", req.params);
+      
       const { imei } = req.params;
-
+      console.log("Extracted IMEI:", imei);
+      console.log("IMEI type:", typeof imei);
+  
       if (!imei) {
+        console.log("IMEI validation failed - IMEI is missing");
         throw new CustomError("IMEI is required", 400);
       }
-
-      const currentData =
-        await this.engineHealthService.getCurrentEngineStatus(imei);
-
-      res.status(200).json({
+  
+      console.log("About to call service...");
+      const currentData = await this.engineHealthService.getCurrentEngineStatus(imei);
+      console.log("Service call completed successfully");
+      console.log("Service returned:", currentData);
+  
+      const response = {
         success: true,
         data: currentData,
-        // {
-        //   ignitionStatus: currentData.ignitionStatus,
-        //   engineStatus: currentData.engineStatus,
-        //   avgRpm: currentData.avgRpm,
-        //   temperature: currentData.temperature,
-        //   oilLevel: currentData.oilLevel,
-        //   speed: currentData.speed,
-        //   activeFaults: currentData.activeFaults,
-        // },
         message: "Current engine status retrieved successfully",
-      });
+      };
+  
+      console.log("Sending response:", response);
+      res.status(200).json(response);
+      console.log("=== Controller completed successfully ===");
+  
     } catch (error) {
+      console.error("=== Controller ERROR ===");
+      console.error("Error in controller:", error);
+      console.error("Error type:", typeof error);
+      
       if (error instanceof CustomError) {
+        console.log("Sending CustomError response:", error.statusCode, error.message);
         res.status(error.statusCode).json({
           success: false,
           message: error.message,
         });
       } else {
+        console.log("Sending 500 error response");
         res.status(500).json({
           success: false,
           message: "Internal server error",

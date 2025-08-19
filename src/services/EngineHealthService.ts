@@ -249,29 +249,143 @@ export class EngineHealthService {
   }
 
   async getCurrentEngineStatus(imei: string): Promise<any> {
-    const telemetry = await Telemetry.findOne({ imei }).sort({
-      "state.reported.ts": -1,
-    });
-    if (!telemetry) {
-      throw new Error("No telemetry data found for the given IMEI");
+    try {
+      console.log("=== Starting getCurrentEngineStatus ===");
+      console.log("IMEI received:", imei);
+  
+      if (!imei) {
+        throw new Error("IMEI is required");
+      }
+  
+      // Step 1: Get the absolute latest data for movement and ignition status
+      const latestTelemetry = await Telemetry.findOne({ imei })
+        .sort({ "state.reported.ts": -1 });
+  
+      if (!latestTelemetry) {
+        throw new Error("No telemetry data found for the given IMEI");
+      }
+  
+      const latestData = latestTelemetry.toObject ? latestTelemetry.toObject() : latestTelemetry;
+      
+      if (!latestData.state?.reported) {
+        throw new Error("No reported data found in latest telemetry");
+      }
+  
+      const latestReported = latestData.state.reported;
+  
+      // Get movement and ignition status from absolute latest data
+      const ignitionValue = latestReported[239];
+      const engineStatus = ignitionValue === 1 ? "ON" : "OFF";
+      
+      const movementValue = latestReported[240];
+      const movementStatus = movementValue === 1 ? "MOVING" : "STOPPED";
+  
+      // Step 2: Get the latest data that has VIN (256) and RPM (36) for engine data
+      const engineTelemetry = await Telemetry.findOne({
+        imei,
+        $and: [
+          { "state.reported.256": { $exists: true } }, // Has VIN
+          { "state.reported.36": { $exists: true } }   // Has RPM
+        ]
+      }).sort({ "state.reported.ts": -1 });
+  
+      let reported, dataSource;
+      
+      if (engineTelemetry) {
+        const engineData = engineTelemetry.toObject ? engineTelemetry.toObject() : engineTelemetry;
+        reported = engineData.state.reported;
+        dataSource = "engine_data_with_vin_rpm";
+        console.log("Using engine data with VIN and RPM");
+      } else {
+        // Fallback to latest data if no data with VIN and RPM found
+        reported = latestReported;
+        dataSource = "latest_data_fallback";
+        console.log("No data with VIN and RPM found, using latest data");
+      }
+      
+      // Calculate data age for engine data
+      const reportedTime = new Date(reported.ts);
+      const dataAge = Math.floor((Date.now() - reportedTime.getTime()) / 1000);
+  
+      console.log(`Using ${dataSource} from ${dataAge} seconds ago for engine data`);
+      console.log("Available keys:", Object.keys(reported));
+  
+      // Helper function to safely get values from engine data
+      const getValue = (key: string | number): number | null => {
+        const value = reported[key.toString()];
+        return value !== undefined ? value : null;
+      };
+  
+      // Oil Level Status
+      let oilLevel = "UNKNOWN";
+      const dtcCount = getValue(30);
+      if (dtcCount !== null) {
+        oilLevel = dtcCount > 0 ? "CHECK_REQUIRED" : "NORMAL";
+      }
+  
+      // Build limited response with only requested fields
+      const response = {
+        // Engine Status
+        engineStatus, // ON/OFF based on ignition
+        
+        // Average RPM
+        avgRpm: getValue(36), // Engine RPM
+        
+        // Temperature in °C
+        temperature: getValue(32), // Coolant temperature in Celsius
+        
+        // Oil Level
+        oilLevel,
+        
+        // Location
+        location: {
+          latLng: reported.latlng || null,
+          altitude: reported.alt || 0,
+          angle: reported.ang || 0
+        },
+        
+        // VIN
+        vin: getValue(256), // Vehicle Identification Number
+        
+        // Speed
+        speed: getValue(37) || reported.sp || 0, // OBD speed or GPS speed
+        
+        // Additional requested fields
+        coolantTemp: getValue(32), // Same as temperature
+        fuelTrim: getValue(33), // Short fuel trim percentage
+        engineLoad: getValue(31), // Engine load percentage
+        rpm: getValue(36), // Same as avgRpm
+        ignitionStatus: engineStatus, // Same as engineStatus
+        
+        // Movement status (from latest data)
+        movement: movementStatus,
+        
+        // Metadata
+        timestamp: reported.ts,
+        dataAge, // Age in seconds
+        deviceActive: dataAge < 300 // Consider active if data is less than 5 minutes old
+      };
+  
+      // Log summary of what data we found
+      console.log("Response summary:", {
+        engineStatus: `${engineStatus} (from latest)`,
+        movementStatus: `${movementStatus} (from latest)`,
+        engineDataAge: `${dataAge}s`,
+        dataSource,
+        temperature: response.temperature,
+        rpm: response.rpm,
+        speed: response.speed,
+        hasVin: response.vin !== null
+      });
+  
+      return response;
+  
+    } catch (error) {
+      console.error("=== ERROR in getCurrentEngineStatus ===");
+      console.error("Error message:", error instanceof Error ? error.message : String(error));
+      console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+      throw error;
     }
-    const reported = telemetry.state?.reported;
-    // Calculate oilLevel based on reported faults
-    let oilLevelStatus = "NORMAL";
-    const activeFaults = reported?.[AVL_ID_MAP.DTC_COUNT] || 0;
-
-    if (activeFaults > 0) {
-      oilLevelStatus = "CHECK_REQUIRED";
-    }
-
-    return {
-      coolantTemp: reported?.[AVL_ID_MAP.COOLANT_TEMPERATURE] || 0,
-      fuelTrim: reported?.[AVL_ID_MAP.SHORT_FUEL_TRIM] || 0,
-      engineLoad: reported?.[AVL_ID_MAP.ENGINE_LOAD] || 0,
-      rpm: reported?.[AVL_ID_MAP.ENGINE_RPM] || 0,
-      speed: reported?.[AVL_ID_MAP.SPEED] || 0,
-      ignitionStatus: reported?.[AVL_ID_MAP.IGNITION] ? "ON" : "OFF",
-      oilLevel: oilLevelStatus,
-    };
   }
+  
 }
