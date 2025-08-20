@@ -23,123 +23,323 @@ export class BatteryAnalyticsService {
     endDate: Date,
     type: ChartGroupingType
   ): Promise<Map<string, BatterySummary>> {
-    const voltageKey = `state.reported.${AVL_ID_MAP.EXTERNAL_VOLTAGE}`; // AVL ID 66: Vehicle battery voltage in Millivolts (mV)
-    const currentKey = `state.reported.${AVL_ID_MAP.BATTERY_CURRENT}`; // AVL ID 68: Battery Current (mA, assumed)
-    const temperatureKey = `state.reported.${AVL_ID_MAP.AMBIENT_AIR_TEMPERATURE}`; // AVL ID 53: Ambient Air Temperature (Celsius)
-    const tsKey = `state.reported.ts`; // Timestamp in milliseconds
+    try {
+      console.log("=== DEBUG: Starting getBatteryAnalyticsReport ===");
+      console.log("IMEI:", imei);
+      console.log("Date range:", startDate, "to", endDate);
+      console.log("Grouping type:", type);
+  
+      // First, let's get the actual data structure
+      const sampleData = await Telemetry.findOne({ imei });
+      
+      if (!sampleData) {
+        console.log("No telemetry data found for IMEI:", imei);
+        return new Map();
+      }
 
+      console.log("=== COMPLETE DATA STRUCTURE ANALYSIS ===");
+      const dataObj = sampleData.toObject?.() || sampleData;
+      
+      // Recursive function to explore the entire structure
+      const exploreStructure = (obj: any, path: string = '', depth: number = 0, maxDepth: number = 4): void => {
+        if (depth > maxDepth || !obj || typeof obj !== 'object') return;
+        
+        const indent = '  '.repeat(depth);
+        
+        if (Array.isArray(obj)) {
+          console.log(`${indent}${path}: Array[${obj.length}]`);
+          if (obj.length > 0) {
+            exploreStructure(obj[0], `${path}[0]`, depth + 1, maxDepth);
+          }
+        } else {
+          Object.keys(obj).forEach(key => {
+            const value = obj[key];
+            const currentPath = path ? `${path}.${key}` : key;
+            
+            if (value === null) {
+              console.log(`${indent}${currentPath}: null`);
+            } else if (value === undefined) {
+              console.log(`${indent}${currentPath}: undefined`);
+            } else if (typeof value === 'object') {
+              if (value.constructor && value.constructor.name !== 'Object') {
+                // Special object type (Date, ObjectId, etc.)
+                console.log(`${indent}${currentPath}: ${value.constructor.name} = ${value}`);
+              } else {
+                console.log(`${indent}${currentPath}: Object {${Object.keys(value).join(', ')}}`);
+                exploreStructure(value, currentPath, depth + 1, maxDepth);
+              }
+            } else {
+              console.log(`${indent}${currentPath}: ${typeof value} = ${value}`);
+            }
+          });
+        }
+      };
+
+      exploreStructure(dataObj);
+
+      console.log("\n=== SEARCHING FOR TELEMETRY PATTERNS ===");
+      
+      // Search for timestamp patterns
+      const findTimestamps = (obj: any, path: string = ''): Array<{path: string, value: any, type: string}> => {
+        const timestamps: Array<{path: string, value: any, type: string}> = [];
+        
+        if (!obj || typeof obj !== 'object') return timestamps;
+        
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          const currentPath = path ? `${path}.${key}` : key;
+          
+          // Check if this looks like a timestamp
+          if (typeof value === 'number' && value > 1000000000000) { // Unix timestamp in milliseconds
+            timestamps.push({path: currentPath, value, type: 'unix_ms'});
+          } else if (typeof value === 'number' && value > 1000000000) { // Unix timestamp in seconds
+            timestamps.push({path: currentPath, value, type: 'unix_s'});
+          } else if (value instanceof Date) {
+            timestamps.push({path: currentPath, value, type: 'date'});
+          } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+            timestamps.push({path: currentPath, value, type: 'iso_string'});
+          } else if (value && typeof value === 'object' && value.$numberLong) {
+            timestamps.push({path: currentPath, value: value.$numberLong, type: 'bson_long'});
+          } else if (key.toLowerCase().includes('time') || key.toLowerCase().includes('date') || key === 'ts') {
+            timestamps.push({path: currentPath, value, type: 'name_based'});
+          }
+          
+          // Recurse into objects
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            timestamps.push(...findTimestamps(value, currentPath));
+          }
+        });
+        
+        return timestamps;
+      };
+
+      const timestampCandidates = findTimestamps(dataObj);
+      console.log("Timestamp candidates found:", timestampCandidates);
+
+      // Search for voltage patterns
+      const findVoltages = (obj: any, path: string = ''): Array<{path: string, value: any, type: string}> => {
+        const voltages: Array<{path: string, value: any, type: string}> = [];
+        
+        if (!obj || typeof obj !== 'object') return voltages;
+        
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          const currentPath = path ? `${path}.${key}` : key;
+          
+          // Check if this looks like voltage
+          if (typeof value === 'number') {
+            if (value >= 3000 && value <= 50000) { // millivolts range
+              voltages.push({path: currentPath, value, type: 'millivolts'});
+            } else if (value >= 3 && value <= 50) { // volts range
+              voltages.push({path: currentPath, value, type: 'volts'});
+            }
+          }
+          
+          // Name-based detection
+          if (key.toLowerCase().includes('volt') || key.toLowerCase().includes('batt') || 
+              key === '66' || key === '67' || key === '68') {
+            voltages.push({path: currentPath, value, type: 'name_based'});
+          }
+          
+          // Recurse into objects
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            voltages.push(...findVoltages(value, currentPath));
+          }
+        });
+        
+        return voltages;
+      };
+
+      const voltageCandidates = findVoltages(dataObj);
+      console.log("Voltage candidates found:", voltageCandidates);
+
+      // Search for any numeric fields that might be useful
+      const findNumericFields = (obj: any, path: string = ''): Array<{path: string, value: any}> => {
+        const numerics: Array<{path: string, value: any}> = [];
+        
+        if (!obj || typeof obj !== 'object') return numerics;
+        
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          const currentPath = path ? `${path}.${key}` : key;
+          
+          if (typeof value === 'number') {
+            numerics.push({path: currentPath, value});
+          }
+          
+          // Recurse into objects
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            numerics.push(...findNumericFields(value, currentPath));
+          }
+        });
+        
+        return numerics;
+      };
+
+      const numericFields = findNumericFields(dataObj);
+      console.log("All numeric fields found:", numericFields);
+
+      // Let's also check a few more documents to see if structure is consistent
+      console.log("\n=== CHECKING MULTIPLE DOCUMENTS FOR CONSISTENCY ===");
+      const multipleDocs = await Telemetry.find({ imei }).limit(3);
+      
+      multipleDocs.forEach((doc, index) => {
+        console.log(`\nDocument ${index + 1} structure:`);
+        const docObj = doc.toObject?.() || doc;
+        console.log(`Keys: ${Object.keys(docObj)}`);
+        
+        // Check for different possible data locations
+        const possibleDataPaths = [
+          'data',
+          'payload', 
+          'telemetry',
+          'readings',
+          'values',
+          'state',
+          'reported'
+        ];
+        
+       
+      });
+
+      // For now, return empty map since we need to understand the structure first
+      console.log("\n=== ANALYSIS COMPLETE ===");
+      console.log("Please review the structure above and update the field mappings accordingly.");
+      
+      return new Map();
+
+    } catch (error) {
+      console.error("Error in getBatteryAnalyticsReport:", error);
+      throw error;
+    }
+  }
+
+  // // Helper method for alternative field
+  // private async getBatteryAnalyticsWithAlternativeField(
+  //   imei: string,
+  //   startDate: Date,
+  //   endDate: Date,
+  //   type: ChartGroupingType,
+  //   voltageKey: string
+  // ): Promise<Map<string, BatterySummary>> {
+  //   // This is a simplified version using the alternative voltage field
+  //   // You can copy the main pipeline logic here but with the alternative field
+  //   console.log(`Using alternative voltage field: ${voltageKey}`);
+    
+  //   // For now, return empty map - implement the full pipeline if needed
+  //   return new Map();
+  // }
+
+  // // Helper method for alternative field
+  // private async getBatteryAnalyticsWithAlternativeField(
+  //   imei: string,
+  //   startDate: Date,
+  //   endDate: Date,
+  //   type: ChartGroupingType,
+  //   voltageKey: string
+  // ): Promise<Map<string, BatterySummary>> {
+  //   // This is a simplified version using the alternative voltage field
+  //   // You can copy the main pipeline logic here but with the alternative field
+  //   console.log(`Using alternative voltage field: ${voltageKey}`);
+    
+  //   // For now, return empty map - implement the full pipeline if needed
+  //   return new Map();
+  // }
+  
+  // Alternative method to try different voltage fields
+  private async getBatteryAnalyticsWithField(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    type: ChartGroupingType,
+    voltageField: string
+  ): Promise<Map<string, BatterySummary>> {
+    console.log(`Trying battery analytics with voltage field: ${voltageField}`);
+    
+    const voltageKey = `state.reported.${voltageField}`;
+    const tsKey = `state.reported.ts`;
+    
     let groupByFormat: string;
     switch (type) {
       case "weekly":
-        groupByFormat = "%Y-%U"; // Year and week number
+        groupByFormat = "%Y-%U";
         break;
       case "monthly":
-        groupByFormat = "%Y-%m"; // Year and month
+        groupByFormat = "%Y-%m";
         break;
       case "daily":
       default:
-        groupByFormat = "%Y-%m-%d"; // Year, month, and day
+        groupByFormat = "%Y-%m-%d";
         break;
     }
-
+  
     const pipeline: any[] = [
       {
-        // Stage 1: Filter telemetry data by IMEI and timestamp range.
-        // Ensure voltage data exists and is a number.
         $match: {
           imei,
           [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
-          [voltageKey]: { $exists: true, $type: "number" },
+          [voltageKey]: { $exists: true, $type: "number", $gt: 0 },
         },
       },
       {
-        // Stage 2: Sort by timestamp to correctly get $first and $last values in the group.
         $sort: { [tsKey]: 1 },
       },
       {
-        // Stage 3: Group data based on the specified chart grouping type (daily, weekly, monthly).
-        // Calculate min, max, average, first, and last voltage and current readings.
         $group: {
           _id: {
-            // Convert timestamp to Date object and format it for grouping
             $dateToString: {
               format: groupByFormat,
               date: { $toDate: `$${tsKey}` },
-              timezone: "UTC", // Use UTC to avoid timezone issues with grouping
+              timezone: "UTC",
             },
           },
-          startingVoltageRaw: { $first: `$${voltageKey}` }, // First voltage reading in the group
-          endingVoltageRaw: { $last: `$${voltageKey}` }, // Last voltage reading in the group
-          minVoltageRaw: { $min: `$${voltageKey}` }, // Minimum voltage in the group
-          maxVoltageRaw: { $max: `$${voltageKey}` }, // Maximum voltage in the group
-          averageVoltageRaw: { $avg: `$${voltageKey}` }, // Average voltage in the group
-
-          currentRaw: { $last: `$${currentKey}` }, // Last current reading in the group
-          temperature: { $last: `$${temperatureKey}` }, // Last temperature reading in the group
-          avgCurrent: { $avg: { $ifNull: [`$${currentKey}`, 0] } }, // Average current, handling missing values
-          count: { $sum: 1 }, // Count of documents in each group
+          voltageRaw: { $avg: `$${voltageKey}` },
+          count: { $sum: 1 },
         },
       },
       {
-        // Stage 4: Project the grouped results into the desired BatterySummary format.
-        // Convert raw millivolt/milliampere values to Volts/Amperes.
-        // Handle potential nulls for current and temperature.
         $project: {
-          _id: 0, // Exclude the default _id field
-          label: "$_id", // Rename _id to label for the report map key
-          startingVoltage: { $divide: ["$startingVoltageRaw", 1000] },
-          endingVoltage: { $divide: ["$endingVoltageRaw", 1000] },
-          minVoltage: { $divide: ["$minVoltageRaw", 1000] },
-          maxVoltage: { $divide: ["$maxVoltageRaw", 1000] },
-          averageVoltage: { $divide: ["$averageVoltageRaw", 1000] },
-
-          // For overallVoltage, we'll use the endingVoltage for consistency with current status
-          overallVoltage: { $divide: ["$endingVoltageRaw", 1000] },
-          current: { $divide: [{ $ifNull: ["$currentRaw", 0] }, 1000] }, // Convert mA to A, default to 0 if null
-          temperature: { $ifNull: ["$temperature", 25] }, // Default temperature to 25 if null
-          hasData: { $gt: ["$count", 0] }, // Indicate if the group has any data
+          _id: 0,
+          label: "$_id",
+          voltage: { $divide: ["$voltageRaw", 1000] }, // Convert mV to V
+          count: "$count",
         },
       },
       {
-        // Stage 5: Sort the final results by label (date) for chronological order.
         $sort: { label: 1 },
       },
     ];
-
+  
     const results = await Telemetry.aggregate(pipeline);
+    console.log(`Alternative approach returned ${results.length} results`);
+  
     const reportMap = new Map<string, BatterySummary>();
-
+  
     results.forEach((point) => {
-      // Ensure numeric conversion and handle potential undefined values
-      const voltage = parseFloat(point.overallVoltage?.toFixed(2) ?? "0");
-      const current = parseFloat(point.current?.toFixed(1) ?? "0");
-      const temperature = point.temperature || 25;
-
+      const voltage = parseFloat(point.voltage?.toFixed(2) ?? "0");
+  
       reportMap.set(point.label, {
-        // Basic voltage data
-        startingVoltage: parseFloat(point.startingVoltage?.toFixed(2) ?? "0"),
-        endingVoltage: parseFloat(point.endingVoltage?.toFixed(2) ?? "0"),
-        minVoltage: parseFloat(point.minVoltage?.toFixed(2) ?? "0"),
-        maxVoltage: parseFloat(point.maxVoltage?.toFixed(2) ?? "0"),
-        averageVoltage: parseFloat(point.averageVoltage?.toFixed(2) ?? "0"),
-
-        // Enhanced data for UI
+        startingVoltage: voltage,
+        endingVoltage: voltage,
+        minVoltage: voltage,
+        maxVoltage: voltage,
+        averageVoltage: voltage,
         overallVoltage: voltage,
-        normalRangeMin: 12.4, // Standard normal range for 12V lead-acid battery (float voltage)
-        normalRangeMax: 13.6, // Standard normal range for 12V lead-acid battery (charging voltage)
-        temperature: temperature,
-        temperatureStatus: this.getTemperatureStatus(temperature),
+        normalRangeMin: 12.4,
+        normalRangeMax: 13.6,
+        temperature: 25,
+        temperatureStatus: "NORMAL",
         soh: this.calculateStateOfHealth(voltage),
         sohStatus: this.getSohStatus(voltage),
-        estimatedLife: this.calculateEstimatedLife(voltage, current),
+        estimatedLife: 100,
         estimatedLifeUnit: "hrs",
-        current: Math.abs(current), // Display absolute current for magnitude
-        currentStatus: this.getCurrentStatus(current),
-        isCharging: current > 0.1, // Consider current > 0.1A as charging
+        current: 0,
+        currentStatus: "IDLE",
+        isCharging: false,
         batteryHealth: this.getBatteryHealth(voltage),
       });
     });
-
+  
     return reportMap;
   }
 

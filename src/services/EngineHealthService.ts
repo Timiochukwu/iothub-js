@@ -320,7 +320,7 @@ export class EngineHealthService {
       let oilLevel = "UNKNOWN";
       const dtcCount = getValue(30);
       if (dtcCount !== null) {
-        oilLevel = dtcCount > 0 ? "CHECK_REQUIRED" : "NORMAL";
+        oilLevel = dtcCount > 0 ? "CHECK REQUIRED" : "NORMAL";
       }
   
       // Build limited response with only requested fields
