@@ -37,8 +37,8 @@ import serviceAlertsRoutes from "./routes/serviceAlertsRoutes";
 
 import path from "path";
 
-import {Notification} from "./models/Notification";
-import {Telemetry} from "./models/Telemetry";
+import { Notification } from "./models/Notification";
+import { Telemetry } from "./models/Telemetry";
 
 import cron from "node-cron";
 
@@ -62,7 +62,6 @@ cron.schedule("0 0 * * *", async () => {
     console.error("❌ Cleanup job failed:", err);
   }
 });
-
 
 cron.schedule("0 0 * * *", async () => {
   try {
@@ -102,12 +101,17 @@ app.use(
   cors({
     origin:
       process.env.NODE_ENV === "production"
-        ? ["https://your-frontend-domain.com", "http://localhost:5177", "https://scetruiothub.vercel.app"]
+        ? [
+            "https://your-frontend-domain.com",
+            "http://localhost:5177",
+            "https://scetruiothub.vercel.app",
+            "*",
+          ]
         : [
             "http://localhost:3000",
             "http://localhost:5177",
             "http://localhost:3001",
-            "https://scetruiothub.vercel.app"
+            "https://scetruiothub.vercel.app",
           ],
     credentials: true,
   })
@@ -213,12 +217,9 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // --- 5. Server Startup Logic ---
-setInterval(
-  () => {
-    realTimeService.cleanupDisconnectedDevices();
-  },
-  5 * 60 * 1000
-);
+setInterval(() => {
+  realTimeService.cleanupDisconnectedDevices();
+}, 5 * 60 * 1000);
 
 // Start server
 const startServer = async (): Promise<void> => {

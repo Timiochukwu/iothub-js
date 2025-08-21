@@ -230,9 +230,9 @@ export class RealTimeService {
     return telemetryDto as TelemetryData;
   }
   private setupChangeStreamListener(): void {
-    console.log(
-      "[Change Stream] Setting up listener on Telemetry collection..."
-    );
+    // console.log(
+    //   "[Change Stream] Setting up listener on Telemetry collection..."
+    // );
 
     // The .watch() method opens a change stream.
     const changeStream = Telemetry.watch();
@@ -242,9 +242,9 @@ export class RealTimeService {
       // We only care about new documents being created by the third party.
       if (change.operationType === "insert") {
         const newTelemetryDoc = change.fullDocument as any;
-        console.log(
-          `[Change Stream] 👂 Detected 'insert' for IMEI: ${newTelemetryDoc.imei}`
-        );
+        // console.log(
+        //   `[Change Stream] 👂 Detected 'insert' for IMEI: ${newTelemetryDoc.imei}`
+        // );
 
         this.handleWorkingHour(newTelemetryDoc.imei, newTelemetryDoc);
         this.handleCollisionByDeceleration(newTelemetryDoc.imei);
@@ -271,13 +271,13 @@ export class RealTimeService {
         // Emit the event to all sockets in that room
         this.io.to(watchRoom).emit(eventName, eventPayload);
 
-        console.log(
-          `[Broadcast] 📡 Relayed DB change for ${newTelemetryDoc.imei} to room '${watchRoom}'.`
-        );
-        console.log(
-          `[Broadcast] 📡 Emitting event '${eventName}' with payload:`,
-          eventPayload
-        );
+        // console.log(
+        //   `[Broadcast] 📡 Relayed DB change for ${newTelemetryDoc.imei} to room '${watchRoom}'.`
+        // );
+        // console.log(
+        //   `[Broadcast] 📡 Emitting event '${eventName}' with payload:`,
+        //   eventPayload
+        // );
       }
     });
 
@@ -860,7 +860,9 @@ export class RealTimeService {
       const lat = latLng ? latLng.split(",")[0] : null;
       const lng = latLng ? latLng.split(",")[1] : null;
 
-      let message = `Device ${imei} is outside working hours. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
+      let message = `Device ${imei} is outside working hours. Speed: ${
+        payload.state.reported[AVL_ID_MAP["SPEED"]]
+      } kph`;
 
       const formatStartTime = new Date(
         currentTime.toDateString() + " " + startTime
@@ -880,7 +882,9 @@ export class RealTimeService {
           // );
 
           if (restingLat !== lat && restingLng !== lng) {
-            message = `Device ${imei} is outside working hours and not at resting location. Speed: ${payload.state.reported[AVL_ID_MAP["SPEED"]]} kph`;
+            message = `Device ${imei} is outside working hours and not at resting location. Speed: ${
+              payload.state.reported[AVL_ID_MAP["SPEED"]]
+            } kph`;
           } else {
             message = `Device ${imei} is outside working hours but at resting location. No alert triggered.`;
             return;
@@ -1012,7 +1016,9 @@ export class RealTimeService {
       currentSpeed < 5
     ) {
       console.log(
-        `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
+        `Potential Collision Detected! Deceleration: ${deceleration.toFixed(
+          2
+        )} km/h/s. ` +
           `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`
       );
 
@@ -1032,7 +1038,9 @@ export class RealTimeService {
       const now = new Date();
 
       let message =
-        `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
+        `Potential Collision Detected! Deceleration: ${deceleration.toFixed(
+          2
+        )} km/h/s. ` +
         `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`;
       // 4. FIX: Use the ICollisionAlert interface for type safety
       const collisionAlertData = {
@@ -1040,7 +1048,9 @@ export class RealTimeService {
         timestamp: now,
         location: { lat, lng },
         message:
-          `Potential Collision Detected! Deceleration: ${deceleration.toFixed(2)} km/h/s. ` +
+          `Potential Collision Detected! Deceleration: ${deceleration.toFixed(
+            2
+          )} km/h/s. ` +
           `Speed dropped from ${previousSpeed} to ${currentSpeed} km/h.`,
         // 5. FIX: Pass the plain object `currentPoint` to your mapping function
         data: currentPoint,

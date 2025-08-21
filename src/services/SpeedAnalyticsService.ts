@@ -44,8 +44,17 @@ export class SpeedAnalyticsService {
     const movementKey = `state.reported.${AVL_ID_MAP.MOVEMENT}`;
 
     // Get the latest telemetry for current status
-    const latestTelemetry = await Telemetry.findOne({ imei })
-      .sort({ [tsKey]: -1 })
+    // fetch the latest record that has ALL required keys
+    const latestTelemetry = await Telemetry.findOne({
+      imei,
+      [speedKey]: { $exists: true, $ne: null },
+      [odometerKey]: { $exists: true, $ne: null },
+      [fuelLevelKey]: { $exists: true, $ne: null },
+      [rpmKey]: { $exists: true, $ne: null },
+      [ignitionKey]: { $exists: true, $ne: null },
+      [movementKey]: { $exists: true, $ne: null },
+    })
+      .sort({ [tsKey]: -1 }) // latest by timestamp
       .select({
         [tsKey]: 1,
         [speedKey]: 1,
@@ -349,84 +358,84 @@ export class SpeedAnalyticsService {
    * @param type The grouping type for the chart (daily, weekly, monthly).
    * @returns A Map where keys are date labels and values are SpeedReportEntry objects.
    */
- // Add this method to your SpeedAnalyticsService class
+  // Add this method to your SpeedAnalyticsService class
 
-// Add this method to your SpeedAnalyticsService class
+  // Add this method to your SpeedAnalyticsService class
 
-async getSpeedReportData(
-  imei: string,
-  startDate: Date,
-  endDate: Date,
-  chartGroupingType: ChartGroupingType
-): Promise<Map<string, SpeedReportEntry>> {
-  
-  // Updated field paths based on your actual data structure
-  const tsKey = `state.reported.ts`;
-  const speedKey = `state.reported.66`; // Speed field (likely in mm/s or cm/s)
-  const odometerKey = `state.reported.241`; // Total odometer field
-  const ignitionKey = `state.reported.69`; // Ignition field
+  async getSpeedReportData(
+    imei: string,
+    startDate: Date,
+    endDate: Date,
+    chartGroupingType: ChartGroupingType
+  ): Promise<Map<string, SpeedReportEntry>> {
+    // Updated field paths based on your actual data structure
+    const tsKey = `state.reported.ts`;
+    const speedKey = `state.reported.66`; // Speed field (likely in mm/s or cm/s)
+    const odometerKey = `state.reported.241`; // Total odometer field
+    const ignitionKey = `state.reported.69`; // Ignition field
 
-  console.log('=== DEBUG SPEED REPORT ===');
-  console.log('IMEI:', imei);
-  console.log('Start Date:', startDate.toISOString());
-  console.log('End Date:', endDate.toISOString());
-  console.log('Chart Type:', chartGroupingType);
+    const modifiedEndDate = new Date(endDate);
+    modifiedEndDate.setHours(23, 59, 59, 999); // Set to end of day
 
-  // First, check if raw data exists - using Date objects for timestamp
-  const rawDataCount = await Telemetry.countDocuments({
-    imei: imei,
-    [tsKey]: {
-      $gte: startDate,
-      $lte: endDate
-    }
-  });
-  console.log('Raw telemetry count:', rawDataCount);
+    console.log("=== DEBUG SPEED REPORT ===");
+    console.log("IMEI:", imei);
+    console.log("Start Date:", startDate.toISOString());
+    console.log("End Date:", endDate.toISOString());
+    console.log("Modified End Date:", modifiedEndDate.toISOString());
+    console.log("Chart Type:", chartGroupingType);
 
-  let aggregationPipeline: any[];
-  
-  if (chartGroupingType === 'weekly') {
-    aggregationPipeline = [
-      {
-        $match: {
-          imei: imei,
-          [tsKey]: {
-            $gte: startDate,
-            $lte: endDate
-          },
-          [speedKey]: { $exists: true },
-          [odometerKey]: { $exists: true },
-          [ignitionKey]: { $exists: true }
-        }
+    // First, check if raw data exists - using Date objects for timestamp
+    const rawDataCount = await Telemetry.countDocuments({
+      imei: imei,
+      [tsKey]: {
+        $gte: startDate,
+        $lte: modifiedEndDate,
       },
-      {
-        $addFields: {
-          // ts is already a Date object, no conversion needed
-          dateTs: `$${tsKey}`,
-          // Convert speed from mm/s to km/h (assuming it's in mm/s)
-          // 1 mm/s = 0.0036 km/h
-          speed: { 
-            $multiply: [
-              { $toDouble: `$${speedKey}` },
-              0.0036
-            ]
+    });
+    console.log("Raw telemetry count:", rawDataCount);
+
+    let aggregationPipeline: any[];
+
+    if (chartGroupingType === "weekly") {
+      aggregationPipeline = [
+        {
+          $match: {
+            imei: imei,
+            [tsKey]: {
+              $gte: startDate,
+              $lte: endDate,
+            },
+            [speedKey]: { $exists: true },
+            [odometerKey]: { $exists: true },
+            [ignitionKey]: { $exists: true },
           },
-          // Convert odometer to meters (assuming it's in mm or similar)
-          odometer: { $toDouble: `$${odometerKey}` },
-          ignition: { $toDouble: `$${ignitionKey}` }
-        }
-      },
-      {
-        $addFields: {
-          // Calculate week start (Monday) using $dateTrunc if MongoDB 5.0+
-          weekStart: {
-            $dateTrunc: {
-              date: "$dateTs",
-              unit: "week",
-              startOfWeek: "monday"
-            }
-          }
-          // For older MongoDB versions, use this instead:
-          /*
+        },
+        {
+          $addFields: {
+            // ts is already a Date object, no conversion needed
+            dateTs: `$${tsKey}`,
+            // Convert speed from mm/s to km/h (assuming it's in mm/s)
+            // 1 mm/s = 0.0036 km/h
+            speed: {
+              $multiply: [{ $toDouble: `$${speedKey}` }, 0.0036],
+            },
+            // Convert odometer to meters (assuming it's in mm or similar)
+            odometer: { $toDouble: `$${odometerKey}` },
+            ignition: { $toDouble: `$${ignitionKey}` },
+          },
+        },
+        {
+          $addFields: {
+            // Calculate week start (Monday) using $dateTrunc if MongoDB 5.0+
+            weekStart: {
+              $dateTrunc: {
+                date: "$dateTs",
+                unit: "week",
+                startOfWeek: "monday",
+              },
+            },
+            // For older MongoDB versions, use this instead:
+            /*
           weekStart: {
             $dateFromString: {
               dateString: {
@@ -453,194 +462,212 @@ async getSpeedReportData(
             }
           }
           */
-        }
-      },
-      {
-        $group: {
-          _id: "$weekStart",
-          firstOdometer: { $first: "$odometer" },
-          lastOdometer: { $last: "$odometer" },
-          maxSpeed: { $max: "$speed" },
-          avgSpeed: { $avg: "$speed" },
-          drivingReadings: {
-            $push: {
-              $cond: [
-                { $eq: ["$ignition", 1] },
-                { 
-                  ts: "$dateTs", 
-                  speed: "$speed" 
-                },
-                "$$REMOVE"
-              ]
-            }
           },
-          recordCount: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ];
-  } else { // daily
-    aggregationPipeline = [
-      {
-        $match: {
-          imei: imei,
-          [tsKey]: {
-            $gte: startDate,
-            $lte: endDate
+        },
+        {
+          $group: {
+            _id: "$weekStart",
+            firstOdometer: { $first: "$odometer" },
+            lastOdometer: { $last: "$odometer" },
+            maxSpeed: { $max: "$speed" },
+            avgSpeed: { $avg: "$speed" },
+            drivingReadings: {
+              $push: {
+                $cond: [
+                  { $eq: ["$ignition", 1] },
+                  {
+                    ts: "$dateTs",
+                    speed: "$speed",
+                  },
+                  "$$REMOVE",
+                ],
+              },
+            },
+            recordCount: { $sum: 1 },
           },
-          [speedKey]: { $exists: true },
-          [odometerKey]: { $exists: true },
-          [ignitionKey]: { $exists: true }
-        }
-      },
-      {
-        $addFields: {
-          dateTs: `$${tsKey}`,
-          // Convert speed from mm/s to km/h
-          speed: { 
-            $multiply: [
-              { $toDouble: `$${speedKey}` },
-              0.0036
-            ]
-          },
-          odometer: { $toDouble: `$${odometerKey}` },
-          ignition: { $toDouble: `$${ignitionKey}` }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: {
-              format: "%Y-%m-%d",
-              date: "$dateTs"
-            }
-          },
-          firstOdometer: { $first: "$odometer" },
-          lastOdometer: { $last: "$odometer" },
-          maxSpeed: { $max: "$speed" },
-          avgSpeed: { $avg: "$speed" },
-          drivingReadings: {
-            $push: {
-              $cond: [
-                { $eq: ["$ignition", 1] },
-                { 
-                  ts: "$dateTs", 
-                  speed: "$speed" 
-                },
-                "$$REMOVE"
-              ]
-            }
-          },
-          recordCount: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ];
-  }
-
-  console.log('Aggregation pipeline:', JSON.stringify(aggregationPipeline, null, 2));
-
-  const aggregationResults = await Telemetry.aggregate(aggregationPipeline);
-  console.log('Aggregation results:', aggregationResults);
-
-  // Convert to SpeedReportEntry format
-  const resultMap = new Map<string, SpeedReportEntry>();
-  
-  // Generate all expected date labels for the range
-  const expectedDates = this.generateDateLabels(startDate, endDate, chartGroupingType);
-  
-  for (const dateLabel of expectedDates) {
-    const aggregatedData = aggregationResults.find(result => {
-      if (chartGroupingType === 'weekly') {
-        return new Date(result._id).toISOString().split('T')[0] === dateLabel;
-      } else {
-        return result._id === dateLabel;
-      }
-    });
-
-    // Calculate driving time from readings (simplified inline calculation)
-    let drivingTime = 0;
-    if (aggregatedData?.drivingReadings && Array.isArray(aggregatedData.drivingReadings)) {
-      const validReadings = aggregatedData.drivingReadings
-        .filter((r: any) => r && r.ts)
-        .sort((a: any, b: any) => {
-          const aTime = a.ts instanceof Date ? a.ts.getTime() : a.ts;
-          const bTime = b.ts instanceof Date ? b.ts.getTime() : b.ts;
-          return aTime - bTime;
-        });
-      
-      // Simple estimation: count readings where ignition was on, multiply by average interval
-      if (validReadings.length > 1) {
-        const firstTime = validReadings[0].ts instanceof Date ? validReadings[0].ts.getTime() : validReadings[0].ts;
-        const lastTime = validReadings[validReadings.length - 1].ts instanceof Date ? 
-          validReadings[validReadings.length - 1].ts.getTime() : validReadings[validReadings.length - 1].ts;
-        
-        const totalTimeSpan = (lastTime - firstTime) / (1000 * 60); // minutes
-        // Estimate driving time as a percentage of total time span based on reading frequency
-        drivingTime = Math.min(totalTimeSpan, validReadings.length * 2); // Assume 2 minutes per reading
-      }
-    }
-
-    // Calculate total distance in kilometers
-    const totalDistance = aggregatedData ? 
-      Math.max(0, ((aggregatedData.lastOdometer || 0) - (aggregatedData.firstOdometer || 0)) / 1000) : 0;
-
-    const entry: SpeedReportEntry = {
-      dateLabel,
-      totalDistance: parseFloat(totalDistance.toFixed(1)),
-      totalDrivingTime: Math.round(drivingTime),
-      totalDrivingTimeUnit: "minutes",
-      averageSpeed: parseFloat((aggregatedData?.avgSpeed || 0).toFixed(1)),
-      maxSpeed: parseFloat((aggregatedData?.maxSpeed || 0).toFixed(1)),
-      speedingIncidents: 0, // TODO: Calculate from speed readings
-      rapidAccelerationIncidents: 0, // TODO: Calculate from speed changes
-      rapidDecelerationIncidents: 0, // TODO: Calculate from speed changes
-      hasData: (aggregatedData?.recordCount || 0) > 0
-    };
-
-    resultMap.set(dateLabel, entry);
-  }
-
-  console.log('Final result map:', Array.from(resultMap.values()));
-  return resultMap;
-}
-
-// Helper method to calculate driving time from readings
-
-
-// Helper method to generate expected date labels
-private generateDateLabels(startDate: Date, endDate: Date, chartGroupingType: ChartGroupingType): string[] {
-  const labels: string[] = [];
-  const current = new Date(startDate);
-
-  while (current <= endDate) {
-    if (chartGroupingType === 'weekly') {
-      // Get Monday of the current week
-      const monday = new Date(current);
-      const dayOfWeek = monday.getDay();
-      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      monday.setDate(monday.getDate() + daysToMonday);
-
-      if (!isNaN(monday.getTime())) {
-        labels.push(monday.toISOString().split('T')[0]!); // <-- added !
-      }
-      current.setDate(current.getDate() + 7);
+        },
+        {
+          $sort: { _id: 1 },
+        },
+      ];
     } else {
-      if (!isNaN(current.getTime())) {
-        labels.push(current.toISOString().split('T')[0]!); // <-- added !
-      }
-      current.setDate(current.getDate() + 1);
+      // daily
+      aggregationPipeline = [
+        {
+          $match: {
+            imei: imei,
+            [tsKey]: {
+              $gte: startDate,
+              $lte: endDate,
+            },
+            [speedKey]: { $exists: true },
+            [odometerKey]: { $exists: true },
+            [ignitionKey]: { $exists: true },
+          },
+        },
+        {
+          $addFields: {
+            dateTs: `$${tsKey}`,
+            // Convert speed from mm/s to km/h
+            speed: {
+              $multiply: [{ $toDouble: `$${speedKey}` }, 0.0036],
+            },
+            odometer: { $toDouble: `$${odometerKey}` },
+            ignition: { $toDouble: `$${ignitionKey}` },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$dateTs",
+              },
+            },
+            firstOdometer: { $first: "$odometer" },
+            lastOdometer: { $last: "$odometer" },
+            maxSpeed: { $max: "$speed" },
+            avgSpeed: { $avg: "$speed" },
+            drivingReadings: {
+              $push: {
+                $cond: [
+                  { $eq: ["$ignition", 1] },
+                  {
+                    ts: "$dateTs",
+                    speed: "$speed",
+                  },
+                  "$$REMOVE",
+                ],
+              },
+            },
+            recordCount: { $sum: 1 },
+          },
+        },
+        {
+          $sort: { _id: 1 },
+        },
+      ];
     }
+
+    // console.log(
+    //   "Aggregation pipeline:",
+    //   JSON.stringify(aggregationPipeline, null, 2)
+    // );
+
+    const aggregationResults = await Telemetry.aggregate(aggregationPipeline);
+    // console.log("Aggregation results:", aggregationResults);
+
+    // Convert to SpeedReportEntry format
+    const resultMap = new Map<string, SpeedReportEntry>();
+
+    // Generate all expected date labels for the range
+    const expectedDates = this.generateDateLabels(
+      startDate,
+      endDate,
+      chartGroupingType
+    );
+
+    for (const dateLabel of expectedDates) {
+      const aggregatedData = aggregationResults.find((result) => {
+        if (chartGroupingType === "weekly") {
+          return new Date(result._id).toISOString().split("T")[0] === dateLabel;
+        } else {
+          return result._id === dateLabel;
+        }
+      });
+
+      // Calculate driving time from readings (simplified inline calculation)
+      let drivingTime = 0;
+      if (
+        aggregatedData?.drivingReadings &&
+        Array.isArray(aggregatedData.drivingReadings)
+      ) {
+        const validReadings = aggregatedData.drivingReadings
+          .filter((r: any) => r && r.ts)
+          .sort((a: any, b: any) => {
+            const aTime = a.ts instanceof Date ? a.ts.getTime() : a.ts;
+            const bTime = b.ts instanceof Date ? b.ts.getTime() : b.ts;
+            return aTime - bTime;
+          });
+
+        // Simple estimation: count readings where ignition was on, multiply by average interval
+        if (validReadings.length > 1) {
+          const firstTime =
+            validReadings[0].ts instanceof Date
+              ? validReadings[0].ts.getTime()
+              : validReadings[0].ts;
+          const lastTime =
+            validReadings[validReadings.length - 1].ts instanceof Date
+              ? validReadings[validReadings.length - 1].ts.getTime()
+              : validReadings[validReadings.length - 1].ts;
+
+          const totalTimeSpan = (lastTime - firstTime) / (1000 * 60); // minutes
+          // Estimate driving time as a percentage of total time span based on reading frequency
+          drivingTime = Math.min(totalTimeSpan, validReadings.length * 2); // Assume 2 minutes per reading
+        }
+      }
+
+      // Calculate total distance in kilometers
+      const totalDistance = aggregatedData
+        ? Math.max(
+            0,
+            ((aggregatedData.lastOdometer || 0) -
+              (aggregatedData.firstOdometer || 0)) /
+              1000
+          )
+        : 0;
+
+      const entry: SpeedReportEntry = {
+        dateLabel,
+        totalDistance: parseFloat(totalDistance.toFixed(1)),
+        totalDrivingTime: Math.round(drivingTime),
+        totalDrivingTimeUnit: "minutes",
+        averageSpeed: parseFloat((aggregatedData?.avgSpeed || 0).toFixed(1)),
+        maxSpeed: parseFloat((aggregatedData?.maxSpeed || 0).toFixed(1)),
+        speedingIncidents: 0, // TODO: Calculate from speed readings
+        rapidAccelerationIncidents: 0, // TODO: Calculate from speed changes
+        rapidDecelerationIncidents: 0, // TODO: Calculate from speed changes
+        hasData: (aggregatedData?.recordCount || 0) > 0,
+      };
+
+      resultMap.set(dateLabel, entry);
+    }
+
+    console.log("Final result map:", Array.from(resultMap.values()));
+    return resultMap;
   }
 
-  return [...new Set(labels)];
-}
+  // Helper method to calculate driving time from readings
 
+  // Helper method to generate expected date labels
+  private generateDateLabels(
+    startDate: Date,
+    endDate: Date,
+    chartGroupingType: ChartGroupingType
+  ): string[] {
+    const labels: string[] = [];
+    const current = new Date(startDate);
 
+    while (current <= endDate) {
+      if (chartGroupingType === "weekly") {
+        // Get Monday of the current week
+        const monday = new Date(current);
+        const dayOfWeek = monday.getDay();
+        const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        monday.setDate(monday.getDate() + daysToMonday);
 
-  
+        if (!isNaN(monday.getTime())) {
+          labels.push(monday.toISOString().split("T")[0]!); // <-- added !
+        }
+        current.setDate(current.getDate() + 7);
+      } else {
+        if (!isNaN(current.getTime())) {
+          labels.push(current.toISOString().split("T")[0]!); // <-- added !
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    }
+
+    return [...new Set(labels)];
+  }
 }
