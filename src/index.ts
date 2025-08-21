@@ -101,12 +101,16 @@ app.use(
   cors({
     origin:
       process.env.NODE_ENV === "production"
+<<<<<<< HEAD
         ? [
             "https://your-frontend-domain.com",
             "http://localhost:5177",
             "https://scetruiothub.vercel.app",
             "*",
           ]
+=======
+        ? ["https://your-frontend-domain.com", "http://localhost:5177", "https://scetruiothub.vercel.app", "*"]
+>>>>>>> 9898f18e85fb36a59c0b378c2b67177e2f2e0fbe
         : [
             "http://localhost:3000",
             "http://localhost:5177",
