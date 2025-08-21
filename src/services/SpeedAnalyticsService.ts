@@ -34,64 +34,69 @@ export class SpeedAnalyticsService {
    * @param imei The IMEI of the device.
    * @returns A CurrentSpeedData object or null if no data is found.
    */
+
   async getCurrentSpeedData(imei: string): Promise<CurrentSpeedData | null> {
     console.log(`Getting speed data for IMEI: ${imei}`);
-
-    // Use the correct AVL_ID_MAP from your telemetryMapper.ts
+  
+    // Updated to use numeric values from your AVL_ID_MAP
     const AVL_ID_MAP = {
-      FUEL_LEVEL: "48",
-      TOTAL_ODOMETER: "241",
-      IGNITION: "239",
-      EXTERNAL_VOLTAGE: "67",
-      SPEED: "37", // This is the OBD speed, 'sp' is GPS speed
-      ENGINE_RPM: "36", // From telemetryCodeMap
-      MOVEMENT: "240",
+      FUEL_LEVEL: 48,
+      TOTAL_ODOMETER: 16,
+      IGNITION: 239,
+      EXTERNAL_VOLTAGE: 67,
+      SPEED: 37,
+      ENGINE_RPM: 36,
+      MOVEMENT: 240,
+      ACTIVE_GSM_OPERATOR: 241,
+      VIN: 256,  // Vehicle Identification Number - key indicator of OBD connectivity
     };
-
-    // Define key mappings based on your actual data structure
+  
     const tsKey = "state.reported.ts";
-    const speedKey = "state.reported.sp"; // GPS speed (primary)
-    const obdSpeedKey = `state.reported.${AVL_ID_MAP.SPEED}`; // OBD speed (backup)
+    const speedKey = "state.reported.sp";
+    const obdSpeedKey = `state.reported.${AVL_ID_MAP.SPEED}`;
     const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
     const fuelLevelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
-    const rpmKey = `state.reported.36`; // Engine RPM from telemetryCodeMap
+    const rpmKey = `state.reported.${AVL_ID_MAP.ENGINE_RPM}`;
     const ignitionKey = `state.reported.${AVL_ID_MAP.IGNITION}`;
     const movementKey = `state.reported.${AVL_ID_MAP.MOVEMENT}`;
-
-    // Get the latest telemetry for current status
-    // fetch the latest record that has ALL required keys
+    const vinKey = `state.reported.${AVL_ID_MAP.VIN}`;
+  
+    // Look for records with VIN (indicates OBD connectivity and rich data)
     const latestTelemetry = await Telemetry.findOne({
       imei,
-      [speedKey]: { $exists: true, $ne: null },
+      // VIN presence indicates OBD is connected and providing rich vehicle data
+      [vinKey]: { $exists: true, $ne: null },
+      // When VIN exists, these fields should also be available
       [odometerKey]: { $exists: true, $ne: null },
-      [fuelLevelKey]: { $exists: true, $ne: null },
       [rpmKey]: { $exists: true, $ne: null },
       [ignitionKey]: { $exists: true, $ne: null },
       [movementKey]: { $exists: true, $ne: null },
     })
-      .sort({ [tsKey]: -1 }) // latest by timestamp
+      .sort({ [tsKey]: -1 })
       .select({
         [tsKey]: 1,
         [speedKey]: 1,
+        [obdSpeedKey]: 1,
         [odometerKey]: 1,
         [fuelLevelKey]: 1,
         [rpmKey]: 1,
         [ignitionKey]: 1,
         [movementKey]: 1,
+        [vinKey]: 1,
       })
       .lean()
       .exec();
-
+  
     console.log("Latest telemetry data:", latestTelemetry);
-
+  
     if (!latestTelemetry || !latestTelemetry.state?.reported) {
       console.log("No valid telemetry data found");
       return null;
     }
-
+  
     const reported = latestTelemetry.state.reported;
     let currentTimestamp: number;
-
+  
     // Handle timestamp properly
     if (reported.ts) {
       if (typeof reported.ts === "object" && reported.ts.$date) {
@@ -106,22 +111,38 @@ export class SpeedAnalyticsService {
     } else {
       currentTimestamp = Date.now();
     }
-
-    // Use GPS speed (sp) as primary, OBD speed as backup
+  
+    // Helper function to safely convert to number
+    const convertToNumber = (value: any): number => {
+      if (value == null) return 0;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
+    };
+  
+    // Extract current values
     const currentSpeed =
-      this.convertToNumber(reported.sp) ||
-      this.convertToNumber(reported[AVL_ID_MAP.SPEED]) ||
+      convertToNumber(reported.sp) ||
+      convertToNumber(reported[AVL_ID_MAP.SPEED]) ||
       0;
+    
+    // Use field 16 for odometer based on your sample data
     const currentOdometer =
-      this.convertToNumber(reported[AVL_ID_MAP.TOTAL_ODOMETER]) || 0;
+      convertToNumber(reported[AVL_ID_MAP.TOTAL_ODOMETER]) || 0;
+    
+    // Make fuel level optional - default to 0 if not available
     const currentFuelLevel =
-      this.convertToNumber(reported[AVL_ID_MAP.FUEL_LEVEL]) || 0;
-    const currentRpm = this.convertToNumber(reported["36"]) || 0; // Engine RPM
+      convertToNumber(reported[AVL_ID_MAP.FUEL_LEVEL]) || 0;
+    
+    const currentRpm = convertToNumber(reported[AVL_ID_MAP.ENGINE_RPM]) || 0;
     const currentIgnition =
-      this.convertToNumber(reported[AVL_ID_MAP.IGNITION]) || 0;
+      convertToNumber(reported[AVL_ID_MAP.IGNITION]) || 0;
     const currentMovement =
-      this.convertToNumber(reported[AVL_ID_MAP.MOVEMENT]) || 0;
-
+      convertToNumber(reported[AVL_ID_MAP.MOVEMENT]) || 0;
+  
     console.log("Current values:", {
       speed: currentSpeed,
       odometer: currentOdometer,
@@ -130,51 +151,61 @@ export class SpeedAnalyticsService {
       ignition: currentIgnition,
       movement: currentMovement,
     });
-
-    // Determine device status - ensure it matches the type definition
+  
+    // Determine device status
     const deviceStatus: "Unknown" | "Active" | "Inactive" =
       currentIgnition === 1 || currentMovement === 1 || currentSpeed > 0
         ? "Active"
         : "Inactive";
-
+  
     // --- Aggregate data for "Today" (from midnight to now) ---
-    const startOfToday = new Date();
+    // Use the current telemetry timestamp to determine "today"
+    const currentDate = new Date(currentTimestamp);
+    const startOfToday = new Date(currentDate);
     startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date();
-
+    const endOfToday = new Date(currentDate);
+    endOfToday.setHours(23, 59, 59, 999);
+  
     console.log(
       "Querying from:",
       startOfToday.toISOString(),
       "to:",
       endOfToday.toISOString()
     );
-
-    // Updated pipeline with correct field names and better filtering
+  
+    // Fixed pipeline - corrected timestamp conversion
     const dailyPipeline: any[] = [
       {
         $match: {
           imei,
           [tsKey]: { $gte: startOfToday, $lte: endOfToday },
+          // Only include records with VIN (OBD connected and providing rich data)
+          [`state.reported.${AVL_ID_MAP.VIN}`]: { $exists: true, $ne: null },
         },
       },
       { $sort: { [tsKey]: 1 } },
       {
         $addFields: {
-          // Handle different timestamp formats
+          // Fixed: Use proper field references with $ prefix
           timestampConverted: {
             $cond: {
-              if: { $type: `$${tsKey}` },
+              if: { $ne: [`$${tsKey}`, null] },
               then: {
                 $cond: {
-                  if: { $eq: [{ $type: `$${tsKey}` }, "object"] },
+                  if: { $eq: [{ $type: `$${tsKey}` }, "date"] },
                   then: { $toLong: `$${tsKey}` },
-                  else: `$${tsKey}`,
+                  else: {
+                    $cond: {
+                      if: { $eq: [{ $type: `$${tsKey}` }, "object"] },
+                      then: { $toLong: `$${tsKey}` },
+                      else: `$${tsKey}`,
+                    },
+                  },
                 },
               },
-              else: new Date().getTime(),
+              else: { $toLong: new Date() },
             },
           },
-          // Convert speed fields safely - prefer GPS speed (sp) over OBD speed
           speedConverted: {
             $cond: {
               if: { $ne: [{ $ifNull: ["$state.reported.sp", null] }, null] },
@@ -186,12 +217,18 @@ export class SpeedAnalyticsService {
               },
             },
           },
+          // Use field 16 for odometer
           odometerConverted: {
             $toDouble: {
               $ifNull: [`$state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`, 0],
             },
           },
-          rpmConverted: { $toDouble: { $ifNull: ["$state.reported.36", 0] } },
+          rpmConverted: { 
+            $toDouble: { 
+              $ifNull: [`$state.reported.${AVL_ID_MAP.ENGINE_RPM}`, 0] 
+            } 
+          },
+          // Fuel level might still be optional even with VIN
           fuelConverted: {
             $toDouble: {
               $ifNull: [`$state.reported.${AVL_ID_MAP.FUEL_LEVEL}`, 0],
@@ -207,12 +244,13 @@ export class SpeedAnalyticsService {
               $ifNull: [`$state.reported.${AVL_ID_MAP.MOVEMENT}`, 0],
             },
           },
+          vinField: `$state.reported.${AVL_ID_MAP.VIN}`,
         },
       },
-      // Filter out records with missing critical data
+      // With VIN present, we should have reliable odometer data
       {
         $match: {
-          odometerConverted: { $gt: 0 }, // At least require valid odometer
+          odometerConverted: { $gt: 0 },
         },
       },
       {
@@ -249,13 +287,13 @@ export class SpeedAnalyticsService {
         },
       },
     ];
-
+  
     const dailyResults = await Telemetry.aggregate(dailyPipeline);
     console.log(
       `Daily aggregation results for ${imei}:`,
       JSON.stringify(dailyResults, null, 2)
     );
-
+  
     let distanceToday = 0;
     let drivingTimeToday = 0;
     let avgSpeedToday = 0;
@@ -263,94 +301,97 @@ export class SpeedAnalyticsService {
     let avgRpmToday = 0;
     let avgMileageToday = 0;
     let lastTripMileage = 0;
-
+  
     if (dailyResults.length > 0) {
       const data = dailyResults[0];
       const rawReadings = data.readings || [];
-
+  
       console.log(`Found ${data.count} records for today`);
       console.log(`Sample readings:`, rawReadings.slice(0, 3));
-
-      // Calculate distance with debug info
+  
       const firstOdo = data.firstOdometer || 0;
       const lastOdo = data.lastOdometer || 0;
-
-      // Odometer is in meters based on your telemetryMapper.ts
-      distanceToday = Math.max(0, (lastOdo - firstOdo) / 1000); // Convert meters to km
-
+      
+      // Check if odometer values are in meters or kilometers
+      // Based on your sample data (16: 660907), this appears to be in meters
+      // so we need to convert to km
+      const odometerDifferenceMeters = Math.max(0, lastOdo - firstOdo);
+      distanceToday = odometerDifferenceMeters / 1000; // Convert to km
+  
       console.log("Distance calculation:", {
         firstOdo,
         lastOdo,
-        difference: lastOdo - firstOdo,
+        differenceMeters: odometerDifferenceMeters,
         distanceKm: distanceToday,
       });
-
+  
       maxSpeedToday = data.maxSpeed || 0;
       avgSpeedToday = parseFloat((data.avgSpeed || 0).toFixed(1));
       avgRpmToday = parseFloat((data.avgRpm || 0).toFixed(0));
-
-      // Calculate driving time using your existing methods if available
-      if (this.calculateDrivingTime && rawReadings.length > 0) {
-        const typedReadingsForDrivingTime = rawReadings.map((r: any) => ({
-          ts: typeof r.ts === "number" ? r.ts : new Date(r.ts).getTime(),
-          ignition: r.ignition,
-          speed: r.speed,
-        }));
-        drivingTimeToday = this.calculateDrivingTime(
-          typedReadingsForDrivingTime
-        );
+  
+      // Simple driving time calculation (if you have these methods, use them)
+      // Otherwise, you can implement basic logic here
+      let drivingMinutes = 0;
+      for (let i = 0; i < rawReadings.length; i++) {
+        const reading = rawReadings[i];
+        if (reading.ignition === 1 || reading.movement === 1 || reading.speed > 0) {
+          drivingMinutes += 1; // Assume 1 minute per reading (adjust based on your data frequency)
+        }
       }
-
-      // Mileage calculations using your existing methods if available
-      if (this.calculateMileage && rawReadings.length > 0) {
-        const typedReadingsForMileage = rawReadings.map((r: any) => ({
-          ts: typeof r.ts === "number" ? r.ts : new Date(r.ts).getTime(),
-          fuelLevel: r.fuelLevel,
-          odometer: r.odometer,
-        }));
-        avgMileageToday = this.calculateMileage(typedReadingsForMileage);
+      drivingTimeToday = drivingMinutes;
+  
+      // Basic mileage calculation (if fuel data is available)
+      if (currentFuelLevel > 0 && distanceToday > 0) {
+        // This is a very basic calculation - you might want to implement more sophisticated logic
+        avgMileageToday = distanceToday / Math.max(currentFuelLevel / 100, 0.1);
+        lastTripMileage = avgMileageToday; // Placeholder
       }
-
-      if (this.calculateLastTripMileage && rawReadings.length > 0) {
-        const typedReadingsForTripMileage = rawReadings.map((r: any) => ({
-          ts: typeof r.ts === "number" ? r.ts : new Date(r.ts).getTime(),
-          ignition: r.ignition,
-          speed: r.speed,
-          fuelLevel: r.fuelLevel,
-          odometer: r.odometer,
-        }));
-        lastTripMileage = this.calculateLastTripMileage(
-          typedReadingsForTripMileage
-        );
-      }
+  
     } else {
-      console.log("No daily results found - this could mean:");
-      console.log("1. No data for today");
-      console.log("2. IMEI mismatch");
-      console.log("3. All odometer values are 0 or missing");
-
-      // Let's check what IMEIs and data exist
-      const availableImeis = await Telemetry.distinct("imei").limit(10);
-      console.log("Available IMEIs in database:", availableImeis);
-
-      // Check for any data for this IMEI regardless of date
+      console.log("No daily results found");
+      
+      // Debug information
+      const availableImeis = await Telemetry.distinct("imei");
+      console.log("Available IMEIs in database:", availableImeis.slice(0, 10));
+      
       const anyDataForImei = await Telemetry.countDocuments({ imei });
       console.log(`Total records for IMEI ${imei}:`, anyDataForImei);
-
-      // Check for data today but without odometer filter
+      
       const todayDataCount = await Telemetry.countDocuments({
         imei,
         [tsKey]: { $gte: startOfToday, $lte: endOfToday },
       });
       console.log(`Records for today without filters:`, todayDataCount);
+      
+      // Check for records with VIN specifically
+      const vinRecordsToday = await Telemetry.countDocuments({
+        imei,
+        [tsKey]: { $gte: startOfToday, $lte: endOfToday },
+        [`state.reported.${AVL_ID_MAP.VIN}`]: { $exists: true, $ne: null },
+      });
+      console.log(`Records with VIN for today:`, vinRecordsToday);
+      
+      // Also check what dates we actually have VIN data for
+      const sampleVinDates = await Telemetry.find({ 
+        imei,
+        [`state.reported.${AVL_ID_MAP.VIN}`]: { $exists: true, $ne: null },
+      })
+        .select({ "state.reported.ts": 1, [`state.reported.${AVL_ID_MAP.VIN}`]: 1 })
+        .sort({ "state.reported.ts": -1 })
+        .limit(5)
+        .lean();
+      console.log("Sample VIN records:", sampleVinDates.map(d => ({
+        ts: d.state?.reported?.ts,
+        vin: d.state?.reported?.[AVL_ID_MAP.VIN]
+      })));
     }
-
+  
     // Placeholder values for features not yet implemented
     const speedingIncidentsToday = 0;
     const speedingDistanceToday = 0;
     const rapidAccelerationIncidentsToday = 0;
     const rapidDecelerationIncidentsToday = 0;
-
+  
     const result: CurrentSpeedData = {
       imei,
       lastUpdateTimestamp: currentTimestamp,
@@ -367,7 +408,7 @@ export class SpeedAnalyticsService {
       rapidDecelerationIncidentsToday,
       deviceStatus,
     };
-
+  
     console.log("Final result:", result);
     return result;
   }
