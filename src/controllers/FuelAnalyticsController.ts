@@ -34,6 +34,8 @@ export class FuelAnalyticsController {
         groupingType
       );
 
+      // console.log(fuelData);
+
       // Convert Map to Array for JSON response
       const fuelDataArray = Array.from(fuelData, ([date, data]) => ({
         date,
@@ -122,8 +124,9 @@ export class FuelAnalyticsController {
       const yesterday = new Date();
       yesterday.setDate(today.getDate() - 1);
 
-      const fuelData =
-        await this.fuelAnalyticsService.getCurrentFuelStatus(imei);
+      const fuelData = await this.fuelAnalyticsService.getCurrentFuelStatus(
+        imei
+      );
 
       if (!fuelData) {
         res.status(404).json({

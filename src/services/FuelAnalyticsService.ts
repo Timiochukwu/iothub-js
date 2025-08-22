@@ -20,6 +20,14 @@ export class FuelAnalyticsService {
     endDate: Date,
     type: ChartGroupingType
   ): Promise<Map<string, any>> {
+    // console.log(imei, startDate, endDate, type);
+    const modifiedStartData = new Date(startDate);
+    modifiedStartData.setHours(0, 0, 0, 0);
+
+    const modifiedEndData = new Date(endDate);
+    // till end of day
+    modifiedEndData.setHours(23, 59, 59, 999);
+
     const fuelLevelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`; // AVL ID 48: Fuel Level (percentage or raw value)
     const totalOdometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`; // AVL ID 16: Total Odometer (km)
     const distanceSinceCodesClearKey = `state.reported.${AVL_ID_MAP.DISTANCE_SINCE_CODES_CLEAR}`; // AVL ID 49
@@ -46,7 +54,8 @@ export class FuelAnalyticsService {
         // Ensure fuel level data exists and is a number.
         $match: {
           imei,
-          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          // [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
+          [tsKey]: { $gte: modifiedStartData, $lte: modifiedEndData },
           [fuelLevelKey]: { $exists: true, $type: "number" },
         },
       },
@@ -118,6 +127,8 @@ export class FuelAnalyticsService {
 
     const results = await Telemetry.aggregate(pipeline);
     const reportMap = new Map<string, any>();
+
+    // console.log(results);
 
     results.forEach((point) => {
       // Calculate fuel consumption (very rough, as actual consumption requires more data points like fill-ups)
