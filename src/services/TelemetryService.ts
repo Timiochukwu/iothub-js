@@ -20,8 +20,7 @@ const convertFuelValue = (value : number, unit : string) : number => {
     default: return value;
   }
 };
-
-
+type MongoAggregationPipeline = any[];
 
 export const AVL_ID_MAP = {
   RPM: "36",
@@ -230,6 +229,20 @@ export interface CombinedAnalyticsPoint {
   fuel_chart_data: DailyFuelBarChartData | null;
   tire_pressure_data: DailyTirePressureData | null;
   engine_health_data: EngineHealthData | null;
+}
+
+interface EnhancedFuelReading {
+  timestamp: number;          // Standardized Unix timestamp in milliseconds
+  date: Date;                 // JavaScript Date object for easier manipulation
+  fuelLevel: number;          // Fuel level percentage (0-100)
+  fuelLiters: number;         // Calculated fuel in liters
+  odometer: number;           // Odometer reading in meters
+  speed: number;              // Speed in km/h
+  rpm: number;                // Engine RPM
+  ignition: number;           // 1 = ON, 0 = OFF
+  movement: number;           // 1 = MOVING, 0 = STOPPED
+  isEngineActive: boolean;    // Derived from ignition, movement, speed, RPM
+  location?: string;          // GPS coordinates if available
 }
 
 /**
@@ -1132,7 +1145,7 @@ export class TelemetryService {
     const rpmKey = `state.reported.${AVL_ID_MAP.RPM}`;
   const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`; 
 
-    const pipeline: any[] = [
+    const pipeline: MongoAggregationPipeline = [
       // 1. Filter for the specific device, time range, and where speed data exists.
       {
         $match: {
@@ -2206,204 +2219,455 @@ export class TelemetryService {
     type: ChartGroupingType
   ): Promise<Map<string, DailyFuelBarChartData>> {
     
-    const tsKey = `state.reported.ts`;
-    const fuelKey = `state.reported.${AVL_ID_MAP.FUEL_LEVEL}`;
-    const odometerKey = `state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`;
+    console.log(`=== FUEL ANALYTICS DEBUG ===`);
+    console.log(`IMEI: ${imei}`);
+    console.log(`Date Range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     
-    const FUEL_TANK_CAPACITY_LITERS = 60;
-  
-    let groupByFormat: string;
-    switch (type) {
-      case "weekly": groupByFormat = "%Y-%U"; break;
-      case "monthly": groupByFormat = "%Y-%m"; break;
-      case "daily":
-      default: groupByFormat = "%Y-%m-%d"; break;
-    }
-  
-    // Get actual data from database
-    const pipeline: any[] = [
-      {
-        $match: {
-          imei,
-          [tsKey]: { $gte: startDate.getTime(), $lte: endDate.getTime() },
-          [fuelKey]: { $exists: true, $type: "number", $gte: 0, $lte: 100 },
-          [odometerKey]: { $exists: true, $type: "number" },
-        },
-      },
-  
-      { $sort: { [tsKey]: 1 } },
-  
-      {
-        $group: {
-          _id: {
-            period: {
-              $dateToString: {
-                format: groupByFormat,
-                date: { $toDate: `$${tsKey}` },
-                timezone: "UTC"
-              }
-            },
-            dayOfWeek: {
-              $dayOfWeek: { $toDate: `$${tsKey}` }
-            }
-          },
-          
-          dayStartFuelPercent: { $first: `$${fuelKey}` },
-          dayEndFuelPercent: { $last: `$${fuelKey}` },
-          minFuelPercent: { $min: `$${fuelKey}` },
-          maxFuelPercent: { $max: `$${fuelKey}` },
-          
-          dayStartOdometer: { $first: `$${odometerKey}` },
-          dayEndOdometer: { $last: `$${odometerKey}` },
-          
-          readingCount: { $sum: 1 }
-        }
-      },
-  
-      {
-        $addFields: {
-          dayName: {
-            $switch: {
-              branches: [
-                { case: { $eq: ["$_id.dayOfWeek", 1] }, then: "Sunday" },
-                { case: { $eq: ["$_id.dayOfWeek", 2] }, then: "Monday" },
-                { case: { $eq: ["$_id.dayOfWeek", 3] }, then: "Tuesday" },
-                { case: { $eq: ["$_id.dayOfWeek", 4] }, then: "Wednesday" },
-                { case: { $eq: ["$_id.dayOfWeek", 5] }, then: "Thursday" },
-                { case: { $eq: ["$_id.dayOfWeek", 6] }, then: "Friday" },
-                { case: { $eq: ["$_id.dayOfWeek", 7] }, then: "Saturday" }
-              ],
-              default: "Unknown"
-            }
-          },
-          
-          dayStartFuelLiters: {
-            $multiply: ["$dayStartFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          dayEndFuelLiters: {
-            $multiply: ["$dayEndFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          minFuelLiters: {
-            $multiply: ["$minFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          maxFuelLiters: {
-            $multiply: ["$maxFuelPercent", { $divide: [FUEL_TANK_CAPACITY_LITERS, 100] }]
-          },
-          
-          dailyDistanceKm: {
-            $divide: [
-              { $subtract: ["$dayEndOdometer", "$dayStartOdometer"] },
-              1000
-            ]
-          }
-        }
-      },
-  
-      {
-        $addFields: {
-          refuelAmount: {
-            $cond: {
-              if: {
-                $gt: [
-                  { $subtract: ["$maxFuelPercent", "$minFuelPercent"] },
-                  8
-                ]
-              },
-              then: { $subtract: ["$maxFuelLiters", "$minFuelLiters"] },
-              else: 0
-            }
-          },
-          
-          netFuelChange: {
-            $subtract: ["$dayEndFuelLiters", "$dayStartFuelLiters"]
-          }
-        }
-      },
-  
-      {
-        $addFields: {
-          totalFuelConsumedLiters: {
-            $cond: {
-              if: { $gt: ["$refuelAmount", 0] },
-              then: {
-                $subtract: ["$refuelAmount", "$netFuelChange"]
-              },
-              else: {
-                $max: [0, { $subtract: ["$dayStartFuelLiters", "$dayEndFuelLiters"] }]
-              }
-            }
-          },
-          
-          totalFuelRefueledLiters: "$refuelAmount"
-        }
-      },
-  
-      {
-        $project: {
-          _id: 0,
-          label: "$_id.period",
-          dayName: 1,
-          dayOfWeek: "$_id.dayOfWeek",
-          totalFuelConsumedLiters: { $round: ["$totalFuelConsumedLiters", 2] },
-          totalFuelRefueledLiters: { $round: ["$totalFuelRefueledLiters", 2] },
-          hasData: { $gt: ["$readingCount", 10] }
-        }
-      },
-  
-      { $sort: { label: 1 } }
-    ];
-  
-    const results = await Telemetry.aggregate(pipeline);
-  
-    // Create a map from database results
-    const dbDataMap = new Map<string, any>();
-    results.forEach((point) => {
-      dbDataMap.set(point.label, point);
-    });
-  
-    // Generate all 7 days of the week
-    const reportMap = new Map<string, DailyFuelBarChartData>();
-    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const resultMap = new Map<string, DailyFuelBarChartData>();
     
-    // Generate dates for the last 7 days (including today)
-    const today = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - i);
+    // Generate expected date labels
+    const dateLabels = this.generateDateLabels(startDate, endDate, type);
+    console.log(`Generated date labels:`, dateLabels);
+    
+    // Process each date individually for better debugging
+    for (const dateLabel of dateLabels) {
+      const dayStart = new Date(dateLabel);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dateLabel);
+      dayEnd.setHours(23, 59, 59, 999);
       
-      const dateString = date.toISOString().split('T')[0]!; // This will never be undefined
-      const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
-      const dayName = dayNames[dayOfWeek]!;
+      console.log(`\nProcessing ${dateLabel}: ${dayStart.toISOString()} to ${dayEnd.toISOString()}`);
       
-      // Check if we have actual data for this day
-      const dbData = dbDataMap.get(dateString);
-      
-      if (dbData) {
-        // Use actual data
-        reportMap.set(dateString, {
-          date: dateString,
-          dayName: dayName,
-          dayOfWeek: dayOfWeek + 1, // Convert to 1-7 format (1=Sunday)
-          chartLabel: `${dayName}`,
-          totalFuelConsumedLiters: dbData.totalFuelConsumedLiters || 0,
-          totalFuelRefueledLiters: dbData.totalFuelRefueledLiters || 0,
-          hasData: dbData.hasData || false
+      try {
+        const fuelData = await this.calculateDailyFuelData(imei, dayStart, dayEnd, dateLabel);
+        resultMap.set(dateLabel, fuelData);
+        
+        console.log(`${dateLabel} result:`, {
+          consumed: fuelData.totalFuelConsumedLiters,
+          refueled: fuelData.totalFuelRefueledLiters,
+          hasData: fuelData.hasData
         });
-      } else {
-        // No data for this day - create empty entry
-        reportMap.set(dateString, {
-          date: dateString,
-          dayName: dayName,
-          dayOfWeek: dayOfWeek + 1,
-          chartLabel: `${dayName}`,
-          totalFuelConsumedLiters: 0,
-          totalFuelRefueledLiters: 0,
-          hasData: false
-        });
+        
+      } catch (error) {
+        console.error(`Error processing ${dateLabel}:`, error);
+        resultMap.set(dateLabel, this.createEmptyFuelChartData(dateLabel));
       }
     }
+    
+    console.log(`=== END FUEL ANALYTICS ===`);
+    return resultMap;
+  }
+
   
-    return reportMap;
+
+  private async calculateDailyFuelData(
+    imei: string, 
+    dayStart: Date, 
+    dayEnd: Date, 
+    dateLabel: string
+  ): Promise<DailyFuelBarChartData> {
+    
+    // Build aggregation pipeline with proper timestamp handling
+    const pipeline = [
+      {
+        $match: {
+          imei: imei,
+          // Use multiple timestamp matching strategies
+          $or: [
+            {
+              "state.reported.ts": {
+                $gte: dayStart,
+                $lte: dayEnd
+              }
+            },
+            {
+              // Handle case where ts might be stored as Unix timestamp
+              "state.reported.ts": {
+                $gte: dayStart.getTime(),
+                $lte: dayEnd.getTime()
+              }
+            }
+          ],
+          // Ensure we have the necessary fields
+          [`state.reported.${AVL_ID_MAP.FUEL_LEVEL}`]: { $exists: true },
+          [`state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`]: { $exists: true }
+        }
+      },
+      {
+        $addFields: {
+          // Robust timestamp conversion that handles multiple formats
+          normalizedTimestamp: {
+            $switch: {
+              branches: [
+                {
+                  // MongoDB Date object
+                  case: { $eq: [{ $type: "$state.reported.ts" }, "date"] },
+                  then: { $toLong: "$state.reported.ts" }
+                },
+                {
+                  // Unix timestamp in seconds (convert to milliseconds)
+                  case: { 
+                    $and: [
+                      { $eq: [{ $type: "$state.reported.ts" }, "long"] },
+                      { $lt: ["$state.reported.ts", 2000000000000] } // Less than year 2033 in ms
+                    ]
+                  },
+                  then: { $multiply: ["$state.reported.ts", 1000] }
+                },
+                {
+                  // Unix timestamp in milliseconds
+                  case: { $eq: [{ $type: "$state.reported.ts" }, "long"] },
+                  then: "$state.reported.ts"
+                },
+                {
+                  // String date
+                  case: { $eq: [{ $type: "$state.reported.ts" }, "string"] },
+                  then: { $toLong: { $dateFromString: { dateString: "$state.reported.ts" } } }
+                },
+                {
+                  // Object with $date property (common in MongoDB exports)
+                  case: { $ne: ["$state.reported.ts.$date", null] },
+                  then: { $toLong: { $dateFromString: { dateString: "$state.reported.ts.$date" } } }
+                }
+              ],
+              default: { $toLong: new Date() }
+            }
+          },
+          // Convert all field values to proper numbers
+          fuelLevel: {
+            $toDouble: { $ifNull: [`$state.reported.${AVL_ID_MAP.FUEL_LEVEL}`, 0] }
+          },
+          odometer: {
+            $toDouble: { $ifNull: [`$state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`, 0] }
+          },
+          speed: {
+            $toDouble: { $ifNull: [`$state.reported.${AVL_ID_MAP.SPEED}`, 0] }
+          },
+          rpm: {
+            $toDouble: { $ifNull: [`$state.reported.${AVL_ID_MAP.ENGINE_RPM}`, 0] }
+          },
+          ignition: {
+            $toDouble: { $ifNull: [`$state.reported.${AVL_ID_MAP.IGNITION}`, 0] }
+          },
+          movement: {
+            $toDouble: { $ifNull: [`$state.reported.${AVL_ID_MAP.MOVEMENT}`, 0] }
+          },
+          location: {
+            $ifNull: ["$state.reported.latlng", ""]
+          }
+        }
+      },
+      {
+        // Filter out invalid timestamps and ensure they're within our date range
+        $match: {
+          normalizedTimestamp: {
+            $gte: dayStart.getTime(),
+            $lte: dayEnd.getTime()
+          },
+          fuelLevel: { $gte: 0, $lte: 100 }, // Valid fuel percentage
+          odometer: { $gt: 0 } // Valid odometer reading
+        }
+      },
+      {
+        $sort: { normalizedTimestamp: 1 as const }
+      },
+      {
+        $group: {
+          _id: null,
+          readings: {
+            $push: {
+              timestamp: "$normalizedTimestamp",
+              fuelLevel: "$fuelLevel",
+              odometer: "$odometer",
+              speed: "$speed",
+              rpm: "$rpm",
+              ignition: "$ignition",
+              movement: "$movement",
+              location: "$location"
+            }
+          },
+          count: { $sum: 1 },
+          firstTimestamp: { $first: "$normalizedTimestamp" },
+          lastTimestamp: { $last: "$normalizedTimestamp" }
+        }
+      }
+    ];
+    
+    console.log(`Running aggregation for ${dateLabel}...`);
+    const results = await Telemetry.aggregate(pipeline);
+    
+    if (results.length === 0 || !results[0].readings || results[0].readings.length === 0) {
+      console.log(`No data found for ${dateLabel}`);
+      return this.createEmptyFuelChartData(dateLabel);
+    }
+    
+    const data = results[0];
+    const readings: EnhancedFuelReading[] = data.readings.map((reading: any) => ({
+      ...reading,
+      date: new Date(reading.timestamp),
+      fuelLiters: this.convertFuelPercentageToLiters(reading.fuelLevel),
+      isEngineActive: reading.ignition === 1 || reading.movement === 1 || reading.speed > 0 || reading.rpm > 0
+    }));
+    
+    console.log(`Found ${readings.length} valid readings for ${dateLabel}`);
+    console.log(`Time span: ${new Date(data.firstTimestamp).toISOString()} to ${new Date(data.lastTimestamp).toISOString()}`);
+    
+    // Calculate fuel metrics
+    const fuelMetrics = this.calculateFuelConsumptionAndRefueling(readings);
+    
+    return {
+      date: dateLabel,
+      dayName: new Date(dateLabel).toLocaleDateString('en-US', { weekday: 'long' }),
+      dayOfWeek: new Date(dateLabel).getDay(),
+      chartLabel: new Date(dateLabel).toLocaleDateString('en-US', { weekday: 'long' }),
+      totalFuelConsumedLiters: parseFloat(fuelMetrics.consumed.toFixed(2)),
+      totalFuelRefueledLiters: parseFloat(fuelMetrics.refueled.toFixed(2)),
+      hasData: readings.length > 0
+    };
+  }
+
+
+  private calculateFuelConsumptionAndRefueling(readings: EnhancedFuelReading[]): {
+    consumed: number;
+    refueled: number;
+    efficiency: number;
+  } {
+    if (readings.length < 2) {
+      return { consumed: 0, refueled: 0, efficiency: 0 };
+    }
+    
+    let totalConsumed = 0;
+    let totalRefueled = 0;
+    let totalDistance = 0;
+    
+    // Constants for fuel analysis
+    const REFUEL_THRESHOLD = 5; // % increase indicates refueling
+    const CONSUMPTION_MIN = 0.1; // Minimum consumption to count (prevent noise)
+    const MAX_TIME_GAP_HOURS = 4; // Maximum gap between readings to consider continuous
+    
+    console.log(`Analyzing ${readings.length} readings for fuel changes...`);
+    
+    for (let i = 1; i < readings.length; i++) {
+      const prev = readings[i - 1];
+      const curr = readings[i];
+
+      if (!prev || !curr) {
+        console.log(`Skipping invalid reading at index ${i}`);
+        continue;
+      }
+      
+      // Calculate time difference
+      const timeDiffHours = (curr.timestamp - prev.timestamp) / (1000 * 60 * 60);
+      
+      // Skip if time gap is too large (data might be unreliable)
+      if (timeDiffHours > MAX_TIME_GAP_HOURS) {
+        console.log(`Skipping large time gap: ${timeDiffHours.toFixed(1)} hours`);
+        continue;
+      }
+      
+      // Calculate fuel level change
+      const fuelChange = curr.fuelLevel - prev.fuelLevel;
+      const fuelChangeLiters = curr.fuelLiters - prev.fuelLiters;
+      
+      // Calculate distance for this segment
+      const distanceMeters = Math.max(0, curr.odometer - prev.odometer);
+      const distanceKm = distanceMeters / 1000;
+      totalDistance += distanceKm;
+      
+      console.log(`Reading ${i}: Time diff: ${timeDiffHours.toFixed(1)}h, Fuel change: ${fuelChange.toFixed(1)}% (${fuelChangeLiters.toFixed(2)}L), Distance: ${distanceKm.toFixed(1)}km`);
+      
+      if (fuelChange > REFUEL_THRESHOLD) {
+        // Refueling detected
+        totalRefueled += Math.abs(fuelChangeLiters);
+        console.log(`  → Refueling detected: +${Math.abs(fuelChangeLiters).toFixed(2)}L`);
+        
+      } else if (fuelChange < -CONSUMPTION_MIN && (prev.isEngineActive || curr.isEngineActive)) {
+        // Fuel consumption detected (only when engine was active)
+        totalConsumed += Math.abs(fuelChangeLiters);
+        console.log(`  → Consumption detected: -${Math.abs(fuelChangeLiters).toFixed(2)}L`);
+        
+      } else if (Math.abs(fuelChange) <= CONSUMPTION_MIN) {
+        console.log(`  → No significant fuel change`);
+      } else {
+        console.log(`  → Ignoring fuel change (engine inactive or anomaly)`);
+      }
+    }
+    
+    // If no direct fuel consumption detected, estimate based on distance and engine activity
+    if (totalConsumed === 0 && totalDistance > 0) {
+      console.log(`No direct fuel consumption detected. Estimating from distance: ${totalDistance.toFixed(1)}km`);
+      totalConsumed = this.estimateFuelConsumptionFromDistance(readings, totalDistance);
+      console.log(`Estimated consumption: ${totalConsumed.toFixed(2)}L`);
+    }
+    
+    const efficiency = totalConsumed > 0 ? totalDistance / totalConsumed : 0;
+    
+    console.log(`Final results: Consumed: ${totalConsumed.toFixed(2)}L, Refueled: ${totalRefueled.toFixed(2)}L, Efficiency: ${efficiency.toFixed(1)}km/L`);
+    
+    return {
+      consumed: totalConsumed,
+      refueled: totalRefueled,
+      efficiency: efficiency
+    };
+  }
+
+
+  private estimateFuelConsumptionFromDistance(readings: EnhancedFuelReading[], distanceKm: number): number {
+    if (distanceKm === 0) return 0;
+    
+    // Calculate average engine conditions
+    const activeReadings = readings.filter(r => r.isEngineActive);
+    if (activeReadings.length === 0) return 0;
+    
+    const avgRpm = activeReadings.reduce((sum, r) => sum + r.rpm, 0) / activeReadings.length;
+    const avgSpeed = activeReadings.reduce((sum, r) => sum + r.speed, 0) / activeReadings.length;
+    
+    // Estimate fuel efficiency based on driving conditions
+    let estimatedEfficiencyKmL = 12; // Base efficiency for average car
+    
+    // Adjust based on RPM
+    if (avgRpm > 2500) {
+      estimatedEfficiencyKmL *= 0.8; // High RPM = lower efficiency
+    } else if (avgRpm < 1500) {
+      estimatedEfficiencyKmL *= 1.1; // Low RPM = higher efficiency
+    }
+    
+    // Adjust based on speed
+    if (avgSpeed < 20) {
+      estimatedEfficiencyKmL *= 0.7; // City driving
+    } else if (avgSpeed > 80) {
+      estimatedEfficiencyKmL *= 0.85; // High speed
+    }
+    
+    // Calculate engine running time for idling consumption
+    const engineRunningMinutes = this.calculateEngineRunningTime(readings);
+    const idlingConsumptionLiters = (engineRunningMinutes / 60) * 0.8; // 0.8L/hour idling
+    
+    const drivingConsumption = distanceKm / estimatedEfficiencyKmL;
+    const totalEstimated = drivingConsumption + idlingConsumptionLiters;
+    
+    console.log(`Estimation details: Distance: ${distanceKm}km, Avg RPM: ${avgRpm}, Avg Speed: ${avgSpeed}km/h, Efficiency: ${estimatedEfficiencyKmL}km/L, Engine time: ${engineRunningMinutes}min`);
+    
+    return Math.max(0, totalEstimated);
+  }
+
+
+  private calculateEngineRunningTime(readings: EnhancedFuelReading[]): number {
+    if (readings.length < 2) return 0;
+    
+    let runningTimeMinutes = 0;
+    
+    for (let i = 1; i < readings.length; i++) {
+      const prev = readings[i - 1];
+      const curr = readings[i];
+
+      if (!prev || !curr) {
+        continue;
+      }
+      
+      if (prev.isEngineActive) {
+        const timeDiffMinutes = (curr.timestamp - prev.timestamp) / (1000 * 60);
+        runningTimeMinutes += Math.min(timeDiffMinutes, 60); // Cap at 60 minutes per segment
+      }
+    }
+    
+    return runningTimeMinutes;
+  }
+
+
+  private convertFuelPercentageToLiters(percentage: number): number {
+    const TANK_CAPACITY_LITERS = 50; // Adjust based on vehicle type
+    return (percentage / 100) * TANK_CAPACITY_LITERS;
+  }
+
+
+  private createEmptyFuelChartData(dateLabel: string): DailyFuelBarChartData {
+    const date = new Date(dateLabel);
+    
+    return {
+      date: dateLabel,
+      dayName: date.toLocaleDateString('en-US', { weekday: 'long' }),
+      dayOfWeek: date.getDay(),
+      chartLabel: date.toLocaleDateString('en-US', { weekday: 'long' }),
+      totalFuelConsumedLiters: 0,
+      totalFuelRefueledLiters: 0,
+      hasData: false
+    };
+  }
+
+
+  private generateDateLabels(startDate: Date, endDate: Date, type: ChartGroupingType): string[] {
+    const labels: string[] = [];
+    const current = new Date(startDate);
+    
+    while (current <= endDate) {
+      const dateString = current.toISOString().split('T')[0];
+      if (dateString) { // Fix: Check for undefined
+        labels.push(dateString);
+      }
+      
+      if (type === 'weekly') {
+        current.setDate(current.getDate() + 7);
+      } else {
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    
+    return labels;
+  }
+
+
+  public async debugTimestampHandling(imei: string, sampleSize: number = 5): Promise<void> {
+    console.log(`=== TIMESTAMP DEBUG FOR ${imei} ===`);
+    
+    const pipeline = [
+      { $match: { imei: imei } },
+      { $sort: { "state.reported.ts": -1 as const } },
+      { $limit: sampleSize },
+      {
+        $project: {
+          originalTs: "$state.reported.ts",
+          tsType: { $type: "$state.reported.ts" },
+          fuelLevel: `$state.reported.${AVL_ID_MAP.FUEL_LEVEL}`,
+          odometer: `$state.reported.${AVL_ID_MAP.TOTAL_ODOMETER}`,
+          ignition: `$state.reported.${AVL_ID_MAP.IGNITION}`
+        }
+      }
+    ];
+    
+    const samples = await Telemetry.aggregate(pipeline);
+    
+    console.log(`Found ${samples.length} sample records:`);
+    samples.forEach((sample, index) => {
+      console.log(`\nSample ${index + 1}:`);
+      console.log(`  Original TS: ${JSON.stringify(sample.originalTs)}`);
+      console.log(`  TS Type: ${sample.tsType}`);
+      console.log(`  Fuel Level: ${sample.fuelLevel}`);
+      console.log(`  Odometer: ${sample.odometer}`);
+      console.log(`  Ignition: ${sample.ignition}`);
+      
+      // Test conversion
+      try {
+        let convertedTimestamp: number;
+        const ts = sample.originalTs;
+        
+        if (ts && typeof ts === 'object' && ts.$date) {
+          convertedTimestamp = new Date(ts.$date).getTime();
+        } else if (ts instanceof Date) {
+          convertedTimestamp = ts.getTime();
+        } else if (typeof ts === 'number') {
+          convertedTimestamp = ts < 2000000000000 ? ts * 1000 : ts;
+        } else {
+          convertedTimestamp = new Date(ts).getTime();
+        }
+        
+        console.log(`  Converted: ${convertedTimestamp} (${new Date(convertedTimestamp).toISOString()})`);
+      } catch (error: any) { // Fix: Explicitly type error as any
+        console.log(`  Conversion Error: ${error?.message || 'Unknown error'}`);
+      }
+    });
+    
+    console.log(`=== END TIMESTAMP DEBUG ===`);
   }
 
  

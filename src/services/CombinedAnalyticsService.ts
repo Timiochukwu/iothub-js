@@ -11,14 +11,12 @@ import {
 } from "../types";
 
 export class CombinedAnalyticsService {
-  private fuelAnalyticsService: FuelAnalyticsService;
   private engineHealthService: EngineHealthService;
   private tirePressureService: TirePressureService;
   private drivingBehaviorService: DrivingBehaviorService;
   private batteryAnalyticsService: BatteryAnalyticsService;
 
   constructor() {
-    this.fuelAnalyticsService = new FuelAnalyticsService();
     this.engineHealthService = new EngineHealthService();
     this.tirePressureService = new TirePressureService();
     this.drivingBehaviorService = new DrivingBehaviorService();
@@ -208,23 +206,16 @@ export class CombinedAnalyticsService {
     currentStatus: any;
     batteryHealth: any;
     engineHealth: any;
-    fuelLevel: any;
     tirePressure: any;
   }> {
     // Get current status from all services
-    const [drivingStatus, batteryStatus, engineStatus, fuelStatus, tireStatus] =
+    const [drivingStatus, batteryStatus, engineStatus, tireStatus] =
       await Promise.all([
         this.drivingBehaviorService.getCurrentDrivingStatus
           ? this.drivingBehaviorService.getCurrentDrivingStatus(imei)
           : null,
         this.batteryAnalyticsService.getCurrentBatteryStatus(imei),
         this.engineHealthService.getEngineHealthData(
-          imei,
-          new Date(),
-          new Date(),
-          "daily"
-        ),
-        this.fuelAnalyticsService.getFuelAnalyticsReport(
           imei,
           new Date(),
           new Date(),
@@ -237,7 +228,6 @@ export class CombinedAnalyticsService {
       currentStatus: drivingStatus,
       batteryHealth: batteryStatus,
       engineHealth: Array.from(engineStatus.values())[0] || null,
-      fuelLevel: Array.from(fuelStatus.values())[0] || null,
       tirePressure: tireStatus,
     };
   }
