@@ -164,6 +164,17 @@ export class FuelAnalyticsController {
         groupingType
       );
 
+<<<<<<< HEAD
+=======
+      // console.log(fuelData);
+
+      // Convert Map to Array for JSON response
+      const fuelDataArray = Array.from(fuelData, ([date, data]) => ({
+        date,
+        ...data,
+      }));
+
+>>>>>>> 7bee1cc79e46bcb2c239d7003acd27b1cb1cbd99
       res.status(200).json({
         success: true,
         data: chartData,
@@ -190,7 +201,15 @@ export class FuelAnalyticsController {
 
       const fuelSummary = await this.fuelAnalyticsService.getCurrentFuelSummary(imei);
 
+<<<<<<< HEAD
       if (!fuelSummary) {
+=======
+      const fuelData = await this.fuelAnalyticsService.getCurrentFuelStatus(
+        imei
+      );
+
+      if (!fuelData) {
+>>>>>>> 7bee1cc79e46bcb2c239d7003acd27b1cb1cbd99
         res.status(404).json({
           success: false,
           message: "No fuel data found",
