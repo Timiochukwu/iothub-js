@@ -102,7 +102,6 @@ app.use(
     origin:
       process.env.NODE_ENV === "production"
         ? [
-            "https://your-frontend-domain.com",
             "http://localhost:5177",
             "https://scetruiothub.vercel.app",
             "*",

@@ -29,6 +29,20 @@ export interface NotificationHistory {
   totalCount: number;
 }
 
+export interface BulkDeleteResult {
+  deletedCount: number;
+  failedIds: string[];
+  success: boolean;
+  message: string;
+}
+
+export interface BulkMarkReadResult {
+  updatedCount: number;
+  failedIds: string[];
+  success: boolean;
+  message: string;
+}
+
 export class NotificationService {
   private notifications: Map<string, NotificationPayload[]> = new Map(); // userId -> notifications[]
   private maxNotificationsPerUser = 100;
@@ -252,6 +266,35 @@ export class NotificationService {
   }
 
   /**
+   * Mark multiple notifications as read
+   */
+  async bulkMarkAsRead(userId: string, notificationIds: string[]): Promise<BulkMarkReadResult> {
+    const userNotifications = this.notifications.get(userId) || [];
+    const failedIds: string[] = [];
+    let updatedCount = 0;
+
+    for (const notificationId of notificationIds) {
+      const notification = userNotifications.find(n => n.id === notificationId);
+      if (notification && !notification.isRead) {
+        notification.isRead = true;
+        updatedCount++;
+        console.log(`Notification ${notificationId} marked as read for user ${userId}`);
+      } else if (!notification) {
+        failedIds.push(notificationId);
+      }
+    }
+
+    return {
+      updatedCount,
+      failedIds,
+      success: failedIds.length === 0,
+      message: failedIds.length === 0 
+        ? `Successfully marked ${updatedCount} notifications as read`
+        : `Marked ${updatedCount} notifications as read, ${failedIds.length} failed`
+    };
+  }
+
+  /**
    * Mark all notifications as read
    */
   async markAllAsRead(userId: string): Promise<void> {
@@ -265,14 +308,118 @@ export class NotificationService {
   /**
    * Delete notification
    */
-  async deleteNotification(userId: string, notificationId: string): Promise<void> {
+  async deleteNotification(userId: string, notificationId: string): Promise<boolean> {
     const userNotifications = this.notifications.get(userId) || [];
     const index = userNotifications.findIndex(n => n.id === notificationId);
     
     if (index !== -1) {
       userNotifications.splice(index, 1);
       console.log(`Notification ${notificationId} deleted for user ${userId}`);
+      return true;
     }
+    return false;
+  }
+
+  /**
+   * Delete multiple notifications
+   */
+  async bulkDeleteNotifications(userId: string, notificationIds: string[]): Promise<BulkDeleteResult> {
+    const userNotifications = this.notifications.get(userId) || [];
+    const failedIds: string[] = [];
+    let deletedCount = 0;
+
+    // Sort indices in descending order to avoid index shifting issues
+    const indicesToDelete: number[] = [];
+    
+    for (const notificationId of notificationIds) {
+      const index = userNotifications.findIndex(n => n.id === notificationId);
+      if (index !== -1) {
+        indicesToDelete.push(index);
+      } else {
+        failedIds.push(notificationId);
+      }
+    }
+
+    // Sort in descending order and delete
+    indicesToDelete.sort((a, b) => b - a);
+    for (const index of indicesToDelete) {
+      userNotifications.splice(index, 1);
+      deletedCount++;
+    }
+
+    console.log(`Bulk delete completed for user ${userId}: ${deletedCount} deleted, ${failedIds.length} failed`);
+
+    return {
+      deletedCount,
+      failedIds,
+      success: failedIds.length === 0,
+      message: failedIds.length === 0 
+        ? `Successfully deleted ${deletedCount} notifications`
+        : `Deleted ${deletedCount} notifications, ${failedIds.length} not found`
+    };
+  }
+
+  /**
+   * Delete all notifications for a user
+   */
+  async deleteAllNotifications(userId: string): Promise<number> {
+    const userNotifications = this.notifications.get(userId) || [];
+    const count = userNotifications.length;
+    this.notifications.set(userId, []);
+    console.log(`All ${count} notifications deleted for user ${userId}`);
+    return count;
+  }
+
+  /**
+   * Delete notifications by type
+   */
+  async deleteNotificationsByType(
+    userId: string, 
+    type: NotificationPayload['type']
+  ): Promise<number> {
+    const userNotifications = this.notifications.get(userId) || [];
+    const initialCount = userNotifications.length;
+    
+    const filteredNotifications = userNotifications.filter(n => n.type !== type);
+    this.notifications.set(userId, filteredNotifications);
+    
+    const deletedCount = initialCount - filteredNotifications.length;
+    console.log(`Deleted ${deletedCount} notifications of type '${type}' for user ${userId}`);
+    return deletedCount;
+  }
+
+  /**
+   * Delete notifications by severity
+   */
+  async deleteNotificationsBySeverity(
+    userId: string, 
+    severity: NotificationPayload['severity']
+  ): Promise<number> {
+    const userNotifications = this.notifications.get(userId) || [];
+    const initialCount = userNotifications.length;
+    
+    const filteredNotifications = userNotifications.filter(n => n.severity !== severity);
+    this.notifications.set(userId, filteredNotifications);
+    
+    const deletedCount = initialCount - filteredNotifications.length;
+    console.log(`Deleted ${deletedCount} notifications of severity '${severity}' for user ${userId}`);
+    return deletedCount;
+  }
+
+  /**
+   * Delete notifications older than specified days
+   */
+  async deleteOldNotifications(userId: string, days: number): Promise<number> {
+    const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const userNotifications = this.notifications.get(userId) || [];
+    const initialCount = userNotifications.length;
+    
+    const filteredNotifications = userNotifications.filter(n => n.timestamp >= cutoffTime);
+    this.notifications.set(userId, filteredNotifications);
+    
+    const deletedCount = initialCount - filteredNotifications.length;
+    console.log(`Deleted ${deletedCount} notifications older than ${days} days for user ${userId}`);
+    return deletedCount;
   }
 
   /**
