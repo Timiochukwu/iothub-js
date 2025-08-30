@@ -75,13 +75,13 @@ export class FuelAnalyticsController {
   async getCurrentFuelSummary(req: Request, res: Response): Promise<void> {
     try {
       const { imei } = req.params;
-
+  
       if (!imei) {
         throw new CustomError("IMEI is required", 400);
       }
-
+  
       const fuelSummary = await this.fuelAnalyticsService.getCurrentFuelSummary(imei);
-
+  
       if (!fuelSummary) {
         res.status(404).json({
           success: false,
@@ -90,45 +90,73 @@ export class FuelAnalyticsController {
         });
         return;
       }
-
+  
+      // Build the response data object
+      const responseData: any = {
+        // Vehicle Info
+        vehicleInfo: {
+          vehicleId: fuelSummary.vehicleId,
+          imei: imei,
+          status: fuelSummary.status,
+          lastUpdated: new Date(fuelSummary.timestamp).toISOString(),
+        },
+        
+        // Daily Fuel Usage
+        dailyUsage: {
+          startingFuel: `${fuelSummary.startingFuel}%`,
+          endingFuel: `${fuelSummary.endingFuel}%`,
+          distanceDriven: `${fuelSummary.distanceDriven}km`,
+          estimatedUsed: `${fuelSummary.estimatedUsed}%`,
+          actualConsumption: `${fuelSummary.actualConsumption}%`,
+        },
+        
+        // Current Status
+        currentStatus: {
+          fuelLevel: `${fuelSummary.currentFuelLevel}%`,
+          fuelLevelStatus: fuelSummary.fuelLevelStatus,
+          totalOdometer: `${fuelSummary.totalOdometer}km`,
+          fuelType: fuelSummary.fuelType,
+          fuelEfficiency: fuelSummary.fuelEfficiency > 0 ? `${fuelSummary.fuelEfficiency} km/L` : 'N/A',
+          dataQuality: fuelSummary.dataQuality,
+        },
+        
+        // Raw data for further processing
+        raw: {
+          startingFuel: fuelSummary.startingFuel,
+          endingFuel: fuelSummary.endingFuel,
+          distanceDriven: fuelSummary.distanceDriven,
+          estimatedUsed: fuelSummary.estimatedUsed,
+          actualConsumption: fuelSummary.actualConsumption,
+          fuelEfficiency: fuelSummary.fuelEfficiency,
+          currentFuelLevel: fuelSummary.currentFuelLevel,
+          totalOdometer: fuelSummary.totalOdometer,
+          timestamp: fuelSummary.timestamp,
+          dataQuality: fuelSummary.dataQuality,
+        }
+      };
+  
+      // Add lastRefuel data if it exists (THIS WAS MISSING!)
+      if (fuelSummary.lastRefuel) {
+        responseData.lastRefuel = {
+          percentage: `${fuelSummary.lastRefuel.percentage}%`,
+          date: fuelSummary.lastRefuel.date,
+          time: fuelSummary.lastRefuel.time,
+          timestamp: fuelSummary.lastRefuel.timestamp,
+          description: `Refueled ${fuelSummary.lastRefuel.percentage}% on ${fuelSummary.lastRefuel.date} at ${fuelSummary.lastRefuel.time}`
+        };
+        
+        // Also add to raw data
+        responseData.raw.lastRefuel = fuelSummary.lastRefuel;
+      }
+  
+      // Add debug info in development mode
+      if (fuelSummary.debug && process.env.NODE_ENV === 'development') {
+        responseData.debug = fuelSummary.debug;
+      }
+  
       res.status(200).json({
         success: true,
-        data: {
-          // Vehicle Info
-          vehicleInfo: {
-            vehicleId: fuelSummary.vehicleId,
-            imei: imei,
-            status: fuelSummary.status,
-            lastUpdated: new Date(fuelSummary.timestamp).toISOString(),
-          },
-          
-          // Daily Fuel Usage (matches your dashboard "Fuel Usage" section)
-          dailyUsage: {
-            startingFuel: `${fuelSummary.startingFuel}%`,
-            endingFuel: `${fuelSummary.endingFuel}%`,
-            distanceDriven: `${fuelSummary.distanceDriven}km`,
-            estimatedUsed: `${fuelSummary.estimatedUsed}%`,
-          },
-          
-          // Current Status
-          currentStatus: {
-            fuelLevel: `${fuelSummary.currentFuelLevel}%`,
-            fuelLevelStatus: fuelSummary.fuelLevelStatus,
-            totalOdometer: `${fuelSummary.totalOdometer}km`,
-            fuelType: fuelSummary.fuelType,
-          },
-          
-          // Raw data for further processing
-          raw: {
-            startingFuel: fuelSummary.startingFuel,
-            endingFuel: fuelSummary.endingFuel,
-            distanceDriven: fuelSummary.distanceDriven,
-            estimatedUsed: fuelSummary.estimatedUsed,
-            currentFuelLevel: fuelSummary.currentFuelLevel,
-            totalOdometer: fuelSummary.totalOdometer,
-            timestamp: fuelSummary.timestamp,
-          }
-        },
+        data: responseData,
         message: "Current fuel summary retrieved successfully"
       });
     } catch (error) {
